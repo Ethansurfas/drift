@@ -1,0 +1,421 @@
+"""Tests for Drift parser — expression parsing and basic assignments."""
+
+import pytest
+
+from drift.lexer import Lexer
+from drift.parser import Parser
+from drift.ast_nodes import (
+    Program,
+    NumberLiteral,
+    StringLiteral,
+    BooleanLiteral,
+    NoneLiteral,
+    ListLiteral,
+    MapLiteral,
+    Identifier,
+    DotAccess,
+    BinaryOp,
+    UnaryOp,
+    FunctionCall,
+    Assignment,
+)
+from drift.errors import ParseError
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def parse(src: str) -> Program:
+    """Convenience: lex + parse source and return the Program AST."""
+    tokens = Lexer(src).tokenize()
+    return Parser(tokens).parse()
+
+
+def expr(src: str):
+    """Parse a single expression statement and return the expression node."""
+    program = parse(src)
+    assert len(program.body) == 1
+    return program.body[0]
+
+
+# ---------------------------------------------------------------------------
+# Literals
+# ---------------------------------------------------------------------------
+
+class TestLiterals:
+    def test_number_integer(self):
+        node = expr("42")
+        assert isinstance(node, NumberLiteral)
+        assert node.value == 42.0
+
+    def test_number_float(self):
+        node = expr("3.14")
+        assert isinstance(node, NumberLiteral)
+        assert node.value == 3.14
+
+    def test_string_plain(self):
+        node = expr('"hello"')
+        assert isinstance(node, StringLiteral)
+        assert node.value == "hello"
+        assert node.parts == ["hello"]
+
+    def test_boolean_true(self):
+        node = expr("true")
+        assert isinstance(node, BooleanLiteral)
+        assert node.value is True
+
+    def test_boolean_false(self):
+        node = expr("false")
+        assert isinstance(node, BooleanLiteral)
+        assert node.value is False
+
+    def test_none_literal(self):
+        node = expr("none")
+        assert isinstance(node, NoneLiteral)
+
+    def test_list_literal(self):
+        node = expr("[1, 2, 3]")
+        assert isinstance(node, ListLiteral)
+        assert len(node.elements) == 3
+        assert all(isinstance(e, NumberLiteral) for e in node.elements)
+        assert node.elements[0].value == 1.0
+        assert node.elements[1].value == 2.0
+        assert node.elements[2].value == 3.0
+
+    def test_list_literal_empty(self):
+        node = expr("[]")
+        assert isinstance(node, ListLiteral)
+        assert node.elements == []
+
+    def test_map_literal(self):
+        node = expr('{ name: "test", value: 42 }')
+        assert isinstance(node, MapLiteral)
+        assert len(node.pairs) == 2
+        assert node.pairs[0][0] == "name"
+        assert isinstance(node.pairs[0][1], StringLiteral)
+        assert node.pairs[0][1].value == "test"
+        assert node.pairs[1][0] == "value"
+        assert isinstance(node.pairs[1][1], NumberLiteral)
+        assert node.pairs[1][1].value == 42.0
+
+    def test_map_literal_empty(self):
+        node = expr("{}")
+        assert isinstance(node, MapLiteral)
+        assert node.pairs == []
+
+
+# ---------------------------------------------------------------------------
+# Identifiers and Dot Access
+# ---------------------------------------------------------------------------
+
+class TestIdentifiersAndAccess:
+    def test_identifier(self):
+        node = expr("foo")
+        assert isinstance(node, Identifier)
+        assert node.name == "foo"
+
+    def test_dot_access(self):
+        node = expr("obj.field")
+        assert isinstance(node, DotAccess)
+        assert isinstance(node.object, Identifier)
+        assert node.object.name == "obj"
+        assert node.field_name == "field"
+
+    def test_chained_dot_access(self):
+        node = expr("a.b.c")
+        assert isinstance(node, DotAccess)
+        assert node.field_name == "c"
+        inner = node.object
+        assert isinstance(inner, DotAccess)
+        assert inner.field_name == "b"
+        assert isinstance(inner.object, Identifier)
+        assert inner.object.name == "a"
+
+
+# ---------------------------------------------------------------------------
+# Binary Operations
+# ---------------------------------------------------------------------------
+
+class TestBinaryOps:
+    def test_addition(self):
+        node = expr("1 + 2")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "+"
+        assert isinstance(node.left, NumberLiteral)
+        assert node.left.value == 1.0
+        assert isinstance(node.right, NumberLiteral)
+        assert node.right.value == 2.0
+
+    def test_subtraction(self):
+        node = expr("5 - 3")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "-"
+
+    def test_multiplication(self):
+        node = expr("2 * 3")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "*"
+
+    def test_division(self):
+        node = expr("10 / 2")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "/"
+
+    def test_modulo(self):
+        node = expr("10 % 3")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "%"
+
+    def test_comparison_gt(self):
+        node = expr("a > 5")
+        assert isinstance(node, BinaryOp)
+        assert node.op == ">"
+        assert isinstance(node.left, Identifier)
+        assert node.left.name == "a"
+        assert isinstance(node.right, NumberLiteral)
+
+    def test_comparison_lt(self):
+        node = expr("a < 5")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "<"
+
+    def test_comparison_eq(self):
+        node = expr("a == 5")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "=="
+
+    def test_comparison_neq(self):
+        node = expr("a != 5")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "!="
+
+    def test_comparison_gte(self):
+        node = expr("a >= 5")
+        assert isinstance(node, BinaryOp)
+        assert node.op == ">="
+
+    def test_comparison_lte(self):
+        node = expr("a <= 5")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "<="
+
+    def test_and_operator(self):
+        node = expr("a and b")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "and"
+        assert isinstance(node.left, Identifier)
+        assert isinstance(node.right, Identifier)
+
+    def test_or_operator(self):
+        node = expr("a or b")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "or"
+
+    def test_and_or_precedence(self):
+        """'a and b or c' should parse as '(a and b) or c'."""
+        node = expr("a and b or c")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "or"
+        assert isinstance(node.left, BinaryOp)
+        assert node.left.op == "and"
+        assert isinstance(node.right, Identifier)
+        assert node.right.name == "c"
+
+    def test_arithmetic_precedence(self):
+        """'1 + 2 * 3' should parse as '1 + (2 * 3)'."""
+        node = expr("1 + 2 * 3")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "+"
+        assert isinstance(node.left, NumberLiteral)
+        assert node.left.value == 1.0
+        assert isinstance(node.right, BinaryOp)
+        assert node.right.op == "*"
+
+
+# ---------------------------------------------------------------------------
+# Unary Operations
+# ---------------------------------------------------------------------------
+
+class TestUnaryOps:
+    def test_unary_not(self):
+        node = expr("not true")
+        assert isinstance(node, UnaryOp)
+        assert node.op == "not"
+        assert isinstance(node.operand, BooleanLiteral)
+        assert node.operand.value is True
+
+    def test_unary_minus(self):
+        node = expr("-5")
+        assert isinstance(node, UnaryOp)
+        assert node.op == "-"
+        assert isinstance(node.operand, NumberLiteral)
+        assert node.operand.value == 5.0
+
+
+# ---------------------------------------------------------------------------
+# Parenthesized Expressions
+# ---------------------------------------------------------------------------
+
+class TestParenthesized:
+    def test_parenthesized_expression(self):
+        """'(1 + 2) * 3' should parse as multiplication at top level."""
+        node = expr("(1 + 2) * 3")
+        assert isinstance(node, BinaryOp)
+        assert node.op == "*"
+        assert isinstance(node.left, BinaryOp)
+        assert node.left.op == "+"
+        assert isinstance(node.right, NumberLiteral)
+        assert node.right.value == 3.0
+
+
+# ---------------------------------------------------------------------------
+# Function Calls
+# ---------------------------------------------------------------------------
+
+class TestFunctionCalls:
+    def test_function_call_no_args(self):
+        node = expr("foo()")
+        assert isinstance(node, FunctionCall)
+        assert isinstance(node.callee, Identifier)
+        assert node.callee.name == "foo"
+        assert node.args == []
+
+    def test_function_call_with_args(self):
+        node = expr("foo(1, 2)")
+        assert isinstance(node, FunctionCall)
+        assert isinstance(node.callee, Identifier)
+        assert node.callee.name == "foo"
+        assert len(node.args) == 2
+        assert isinstance(node.args[0], NumberLiteral)
+        assert node.args[0].value == 1.0
+        assert isinstance(node.args[1], NumberLiteral)
+        assert node.args[1].value == 2.0
+
+    def test_method_call(self):
+        """obj.method(arg) should parse as FunctionCall on DotAccess."""
+        node = expr("obj.method(1)")
+        assert isinstance(node, FunctionCall)
+        assert isinstance(node.callee, DotAccess)
+        assert node.callee.field_name == "method"
+        assert len(node.args) == 1
+
+
+# ---------------------------------------------------------------------------
+# Assignments
+# ---------------------------------------------------------------------------
+
+class TestAssignments:
+    def test_simple_assignment(self):
+        node = expr("x = 42")
+        assert isinstance(node, Assignment)
+        assert node.target == "x"
+        assert node.type_hint is None
+        assert isinstance(node.value, NumberLiteral)
+        assert node.value.value == 42.0
+
+    def test_typed_assignment(self):
+        node = expr("x: number = 42")
+        assert isinstance(node, Assignment)
+        assert node.target == "x"
+        assert node.type_hint == "number"
+        assert isinstance(node.value, NumberLiteral)
+        assert node.value.value == 42.0
+
+    def test_string_assignment(self):
+        node = expr('name = "drift"')
+        assert isinstance(node, Assignment)
+        assert node.target == "name"
+        assert isinstance(node.value, StringLiteral)
+        assert node.value.value == "drift"
+
+
+# ---------------------------------------------------------------------------
+# String Interpolation
+# ---------------------------------------------------------------------------
+
+class TestStringInterpolation:
+    def test_plain_string_parts(self):
+        node = expr('"hello"')
+        assert isinstance(node, StringLiteral)
+        assert node.parts == ["hello"]
+
+    def test_interpolation_simple(self):
+        node = expr('"Hello {name}!"')
+        assert isinstance(node, StringLiteral)
+        assert node.value == "Hello {name}!"
+        assert len(node.parts) == 3
+        assert node.parts[0] == "Hello "
+        assert isinstance(node.parts[1], Identifier)
+        assert node.parts[1].name == "name"
+        assert node.parts[2] == "!"
+
+    def test_interpolation_dot_access(self):
+        node = expr('"Score: {score.verdict}"')
+        assert isinstance(node, StringLiteral)
+        assert len(node.parts) == 2
+        assert node.parts[0] == "Score: "
+        assert isinstance(node.parts[1], DotAccess)
+        assert node.parts[1].field_name == "verdict"
+        assert isinstance(node.parts[1].object, Identifier)
+        assert node.parts[1].object.name == "score"
+
+    def test_interpolation_only(self):
+        node = expr('"{x}"')
+        assert isinstance(node, StringLiteral)
+        assert len(node.parts) == 1
+        assert isinstance(node.parts[0], Identifier)
+        assert node.parts[0].name == "x"
+
+
+# ---------------------------------------------------------------------------
+# Multiple Statements
+# ---------------------------------------------------------------------------
+
+class TestMultipleStatements:
+    def test_two_assignments(self):
+        program = parse("x = 1\ny = 2")
+        assert len(program.body) == 2
+        assert isinstance(program.body[0], Assignment)
+        assert program.body[0].target == "x"
+        assert isinstance(program.body[1], Assignment)
+        assert program.body[1].target == "y"
+
+    def test_mixed_statements(self):
+        program = parse("x = 1\n42")
+        assert len(program.body) == 2
+        assert isinstance(program.body[0], Assignment)
+        assert isinstance(program.body[1], NumberLiteral)
+
+
+# ---------------------------------------------------------------------------
+# Program Structure
+# ---------------------------------------------------------------------------
+
+class TestProgramStructure:
+    def test_empty_program(self):
+        program = parse("")
+        assert isinstance(program, Program)
+        assert program.body == []
+
+    def test_program_returns_program_node(self):
+        program = parse("42")
+        assert isinstance(program, Program)
+
+
+# ---------------------------------------------------------------------------
+# Error Cases
+# ---------------------------------------------------------------------------
+
+class TestParseErrors:
+    def test_unclosed_paren(self):
+        with pytest.raises(ParseError):
+            parse("(1 + 2")
+
+    def test_unclosed_bracket(self):
+        with pytest.raises(ParseError):
+            parse("[1, 2")
+
+    def test_unclosed_brace(self):
+        with pytest.raises(ParseError):
+            parse("{ name: 1")
