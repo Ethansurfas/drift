@@ -569,3 +569,56 @@ class TestIntegration:
         assert result == [
             TokenType.IDENTIFIER, TokenType.NOT_EQUALS, TokenType.NUMBER,
         ]
+
+
+# ---------------------------------------------------------------------------
+# Indentation Tracking
+# ---------------------------------------------------------------------------
+
+class TestIndentation:
+    def test_indent_simple(self):
+        src = "if x:\n  y = 1"
+        tokens = Lexer(src).tokenize()
+        types = [t.type for t in tokens if t.type != TokenType.EOF]
+        assert TokenType.INDENT in types
+
+    def test_dedent_simple(self):
+        src = "if x:\n  y = 1\nz = 2"
+        tokens = Lexer(src).tokenize()
+        types = [t.type for t in tokens if t.type != TokenType.EOF]
+        assert TokenType.DEDENT in types
+
+    def test_nested_indent(self):
+        src = "if x:\n  if y:\n    z = 1\n  w = 2\na = 3"
+        tokens = Lexer(src).tokenize()
+        types = [t.type for t in tokens if t.type != TokenType.EOF]
+        indent_count = types.count(TokenType.INDENT)
+        dedent_count = types.count(TokenType.DEDENT)
+        assert indent_count == 2
+        assert dedent_count == 2
+
+    def test_no_indent_flat(self):
+        src = "x = 1\ny = 2\nz = 3"
+        tokens = Lexer(src).tokenize()
+        types = [t.type for t in tokens if t.type != TokenType.EOF]
+        assert TokenType.INDENT not in types
+        assert TokenType.DEDENT not in types
+
+    def test_dedent_at_eof(self):
+        src = "if x:\n  y = 1"
+        tokens = Lexer(src).tokenize()
+        # Should have DEDENT before EOF
+        types = [t.type for t in tokens]
+        eof_idx = types.index(TokenType.EOF)
+        pre_eof = types[:eof_idx]
+        assert TokenType.DEDENT in pre_eof
+
+    def test_blank_lines_ignored(self):
+        src = "x = 1\n\n\ny = 2"
+        tokens = Lexer(src).tokenize()
+        idents = [t for t in tokens if t.type == TokenType.IDENTIFIER]
+        assert len(idents) == 2
+        # No INDENT/DEDENT from blank lines
+        types = [t.type for t in tokens]
+        assert TokenType.INDENT not in types
+        assert TokenType.DEDENT not in types

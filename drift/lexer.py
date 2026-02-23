@@ -221,6 +221,11 @@ class Lexer:
 
     def tokenize(self) -> list[Token]:
         """Scan the entire source and return a list of tokens ending with EOF."""
+        raw = self._scan_raw_tokens()
+        return self._insert_indentation(raw)
+
+    def _scan_raw_tokens(self) -> list[Token]:
+        """Phase 1: Scan source into raw tokens (no INDENT/DEDENT)."""
         tokens: list[Token] = []
 
         while self.pos < len(self.source):
@@ -392,6 +397,95 @@ class Lexer:
         # End of input
         tokens.append(Token(TokenType.EOF, "", self.line, self.col))
         return tokens
+
+    # -- Indentation post-processing ----------------------------------------
+
+    @staticmethod
+    def _line_indent(source: str, line_num: int) -> int | None:
+        """Return the number of leading spaces for the given 1-indexed line.
+
+        Returns None if the line is blank or comment-only (should be skipped
+        for indentation purposes).
+        """
+        lines = source.split("\n")
+        idx = line_num - 1  # convert to 0-indexed
+        if idx < 0 or idx >= len(lines):
+            return None
+        line = lines[idx]
+        stripped = line.lstrip(" ")
+        if stripped == "" or stripped.startswith("--"):
+            return None  # blank or comment-only line
+        return len(line) - len(stripped)
+
+    def _insert_indentation(self, raw: list[Token]) -> list[Token]:
+        """Phase 2: Walk raw tokens and insert INDENT/DEDENT tokens.
+
+        At each NEWLINE token, determine the indent level of the next
+        non-blank, non-comment line and emit INDENT/DEDENT as needed.
+        Consecutive NEWLINEs (blank lines) are collapsed into one.
+        Before EOF, emit DEDENTs for any remaining open indent levels.
+        """
+        indent_stack: list[int] = [0]
+        result: list[Token] = []
+        i = 0
+
+        while i < len(raw):
+            tok = raw[i]
+
+            if tok.type == TokenType.NEWLINE:
+                # Emit the NEWLINE
+                result.append(tok)
+                i += 1
+
+                # Skip any consecutive NEWLINE tokens (blank lines in token stream)
+                while i < len(raw) and raw[i].type == TokenType.NEWLINE:
+                    i += 1
+
+                # If we've reached EOF, don't process indentation here —
+                # the EOF handler below will emit remaining DEDENTs
+                if i >= len(raw) or raw[i].type == TokenType.EOF:
+                    continue
+
+                # Determine indent level of the next meaningful line.
+                # Use the next token's line number to look up indentation
+                # from the source.
+                next_tok = raw[i]
+                indent = self._line_indent(self.source, next_tok.line)
+
+                # If indent is None the line is blank/comment — but we
+                # already skipped those NEWLINEs above, so this shouldn't
+                # happen in practice. Safety fallback: treat as same level.
+                if indent is None:
+                    continue
+
+                current_indent = indent_stack[-1]
+
+                if indent > current_indent:
+                    indent_stack.append(indent)
+                    result.append(
+                        Token(TokenType.INDENT, "", next_tok.line, 1)
+                    )
+                elif indent < current_indent:
+                    while indent_stack[-1] > indent:
+                        indent_stack.pop()
+                        result.append(
+                            Token(TokenType.DEDENT, "", next_tok.line, 1)
+                        )
+            elif tok.type == TokenType.EOF:
+                # Emit remaining DEDENTs before EOF
+                eof_line = tok.line
+                while indent_stack[-1] > 0:
+                    indent_stack.pop()
+                    result.append(
+                        Token(TokenType.DEDENT, "", eof_line, 1)
+                    )
+                result.append(tok)
+                i += 1
+            else:
+                result.append(tok)
+                i += 1
+
+        return result
 
     # -- Token readers -----------------------------------------------------
 
