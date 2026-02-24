@@ -26,6 +26,8 @@ from drift.ast_nodes import (
     ForEach,
     MatchStatement,
     MatchArm,
+    FunctionDef,
+    ReturnStatement,
 )
 from drift.errors import ParseError
 
@@ -599,3 +601,62 @@ class TestMatchStatement:
         last_arm = stmt.arms[-1]
         assert isinstance(last_arm.pattern, Identifier)
         assert last_arm.pattern.name == "_"
+
+
+# ---------------------------------------------------------------------------
+# Function Definitions and Return Statements
+# ---------------------------------------------------------------------------
+
+class TestFunctionDef:
+    def test_function_simple(self):
+        src = 'define greet(name: string):\n  print name'
+        prog = parse(src)
+        func = prog.body[0]
+        assert isinstance(func, FunctionDef)
+        assert func.name == "greet"
+        assert len(func.params) == 1
+        assert func.params[0] == ("name", "string")
+        assert func.return_type is None
+
+    def test_function_with_return_type(self):
+        src = "define add(a: number, b: number) -> number:\n  return a + b"
+        prog = parse(src)
+        func = prog.body[0]
+        assert func.return_type == "number"
+        assert isinstance(func.body[0], ReturnStatement)
+
+    def test_function_multiple_params(self):
+        src = "define f(x: string, y: number, z: boolean):\n  print x"
+        prog = parse(src)
+        func = prog.body[0]
+        assert len(func.params) == 3
+        assert func.params[0] == ("x", "string")
+        assert func.params[1] == ("y", "number")
+        assert func.params[2] == ("z", "boolean")
+
+    def test_function_no_params(self):
+        src = 'define hello():\n  print "hi"'
+        prog = parse(src)
+        func = prog.body[0]
+        assert len(func.params) == 0
+
+    def test_return_expression(self):
+        src = "define f():\n  return 42"
+        prog = parse(src)
+        ret = prog.body[0].body[0]
+        assert isinstance(ret, ReturnStatement)
+        assert isinstance(ret.value, NumberLiteral)
+
+    def test_return_binary(self):
+        src = "define f():\n  return a + b"
+        prog = parse(src)
+        ret = prog.body[0].body[0]
+        assert isinstance(ret, ReturnStatement)
+        assert isinstance(ret.value, BinaryOp)
+
+    def test_function_then_code(self):
+        src = 'define f():\n  return 1\nprint "done"'
+        prog = parse(src)
+        assert len(prog.body) == 2
+        assert isinstance(prog.body[0], FunctionDef)
+        assert isinstance(prog.body[1], PrintStatement)

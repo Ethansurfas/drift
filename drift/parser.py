@@ -28,6 +28,8 @@ from drift.ast_nodes import (
     ForEach,
     MatchStatement,
     MatchArm,
+    FunctionDef,
+    ReturnStatement,
 )
 
 
@@ -125,6 +127,10 @@ class Parser:
             return self.parse_for_each()
         if self.current().type == TokenType.MATCH:
             return self.parse_match()
+        if self.current().type == TokenType.DEFINE:
+            return self.parse_function_def()
+        if self.current().type == TokenType.RETURN:
+            return self.parse_return()
 
         if self.current().type == TokenType.IDENTIFIER:
             # Check for assignment: IDENTIFIER EQUALS ...
@@ -350,6 +356,59 @@ class Parser:
             line=tok.line,
             col=tok.column,
         )
+
+    def parse_function_def(self):
+        """Parse a function definition.
+
+        ::
+
+            define name(param: type, ...) [-> return_type]:
+              <body>
+        """
+        tok = self.expect(TokenType.DEFINE)
+        name_tok = self.expect(TokenType.IDENTIFIER)
+        self.expect(TokenType.LPAREN)
+
+        # Parse parameter list
+        params: list[tuple[str, str | None]] = []
+        if self.current().type != TokenType.RPAREN:
+            # First parameter
+            param_tok = self.expect(TokenType.IDENTIFIER)
+            self.expect(TokenType.COLON)
+            type_tok = self.expect(TokenType.IDENTIFIER)
+            params.append((param_tok.value, type_tok.value))
+
+            while self.match(TokenType.COMMA):
+                param_tok = self.expect(TokenType.IDENTIFIER)
+                self.expect(TokenType.COLON)
+                type_tok = self.expect(TokenType.IDENTIFIER)
+                params.append((param_tok.value, type_tok.value))
+
+        self.expect(TokenType.RPAREN)
+
+        # Optional return type: -> type
+        return_type: str | None = None
+        if self.match(TokenType.ARROW):
+            rt_tok = self.expect(TokenType.IDENTIFIER)
+            return_type = rt_tok.value
+
+        self.expect(TokenType.COLON)
+        body = self.parse_block()
+
+        return FunctionDef(
+            name=name_tok.value,
+            params=params,
+            return_type=return_type,
+            body=body,
+            line=tok.line,
+            col=tok.column,
+        )
+
+    def parse_return(self):
+        """Parse a return statement: ``return <expression>``."""
+        tok = self.expect(TokenType.RETURN)
+        value = self.parse_expression()
+        return ReturnStatement(value=value, line=tok.line, col=tok.column)
 
     # -- Expression parsing (recursive descent by precedence) --------------
 
