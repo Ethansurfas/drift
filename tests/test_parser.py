@@ -18,6 +18,10 @@ from drift.ast_nodes import (
     UnaryOp,
     FunctionCall,
     Assignment,
+    PrintStatement,
+    LogStatement,
+    SchemaDefinition,
+    SchemaField,
 )
 from drift.errors import ParseError
 
@@ -419,3 +423,87 @@ class TestParseErrors:
     def test_unclosed_brace(self):
         with pytest.raises(ParseError):
             parse("{ name: 1")
+
+
+# ---------------------------------------------------------------------------
+# Print Statement
+# ---------------------------------------------------------------------------
+
+class TestPrintStatement:
+    def test_print_string(self):
+        prog = parse('print "Hello, Drift!"')
+        assert isinstance(prog.body[0], PrintStatement)
+        assert isinstance(prog.body[0].value, StringLiteral)
+
+    def test_print_identifier(self):
+        prog = parse('print name')
+        assert isinstance(prog.body[0], PrintStatement)
+        assert isinstance(prog.body[0].value, Identifier)
+
+    def test_print_interpolated(self):
+        prog = parse('print "Hello {name}!"')
+        stmt = prog.body[0]
+        assert isinstance(stmt, PrintStatement)
+        assert isinstance(stmt.value, StringLiteral)
+
+
+# ---------------------------------------------------------------------------
+# Log Statement
+# ---------------------------------------------------------------------------
+
+class TestLogStatement:
+    def test_log_statement(self):
+        prog = parse('log "Processing item"')
+        assert isinstance(prog.body[0], LogStatement)
+
+
+# ---------------------------------------------------------------------------
+# Schema Definition
+# ---------------------------------------------------------------------------
+
+class TestSchemaDefinition:
+    def test_schema_simple(self):
+        src = "schema Deal:\n  address: string\n  price: number"
+        prog = parse(src)
+        schema = prog.body[0]
+        assert isinstance(schema, SchemaDefinition)
+        assert schema.name == "Deal"
+        assert len(schema.fields) == 2
+        assert schema.fields[0].name == "address"
+        assert schema.fields[0].type_name == "string"
+        assert schema.fields[1].name == "price"
+        assert schema.fields[1].type_name == "number"
+
+    def test_schema_optional_field(self):
+        src = "schema X:\n  data: map (optional)"
+        prog = parse(src)
+        schema = prog.body[0]
+        assert schema.fields[0].optional is True
+        assert schema.fields[0].type_name == "map"
+
+    def test_schema_list_of_type(self):
+        src = "schema X:\n  items: list of string"
+        prog = parse(src)
+        schema = prog.body[0]
+        assert schema.fields[0].type_name == "list of string"
+
+
+# ---------------------------------------------------------------------------
+# Mixed Statement Sequences
+# ---------------------------------------------------------------------------
+
+class TestMixedStatements:
+    def test_multiple_statements(self):
+        src = 'x = 1\nprint "hello"\ny = 2'
+        prog = parse(src)
+        assert len(prog.body) == 3
+        assert isinstance(prog.body[0], Assignment)
+        assert isinstance(prog.body[1], PrintStatement)
+        assert isinstance(prog.body[2], Assignment)
+
+    def test_schema_then_code(self):
+        src = 'schema D:\n  x: number\nprint "done"'
+        prog = parse(src)
+        assert len(prog.body) == 2
+        assert isinstance(prog.body[0], SchemaDefinition)
+        assert isinstance(prog.body[1], PrintStatement)

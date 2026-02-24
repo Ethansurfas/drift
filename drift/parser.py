@@ -20,6 +20,10 @@ from drift.ast_nodes import (
     UnaryOp,
     FunctionCall,
     Assignment,
+    PrintStatement,
+    LogStatement,
+    SchemaDefinition,
+    SchemaField,
 )
 
 
@@ -105,6 +109,13 @@ class Parser:
         """
         self.skip_newlines()
 
+        if self.current().type == TokenType.PRINT:
+            return self.parse_print()
+        if self.current().type == TokenType.LOG:
+            return self.parse_log()
+        if self.current().type == TokenType.SCHEMA:
+            return self.parse_schema()
+
         if self.current().type == TokenType.IDENTIFIER:
             # Check for assignment: IDENTIFIER EQUALS ...
             if self.peek().type == TokenType.EQUALS:
@@ -135,6 +146,82 @@ class Parser:
         self.expect(TokenType.EQUALS)
         value = self.parse_expression()
         return Assignment(target=target, type_hint=type_hint, value=value, line=line, col=col)
+
+    def parse_print(self):
+        """Parse a print statement: ``print <expression>``."""
+        tok = self.expect(TokenType.PRINT)
+        value = self.parse_expression()
+        return PrintStatement(value=value, line=tok.line, col=tok.column)
+
+    def parse_log(self):
+        """Parse a log statement: ``log <expression>``."""
+        tok = self.expect(TokenType.LOG)
+        value = self.parse_expression()
+        return LogStatement(value=value, line=tok.line, col=tok.column)
+
+    def parse_schema(self):
+        """Parse a schema definition.
+
+        ::
+
+            schema Name:
+              field1: type
+              field2: list of type
+              field3: type (optional)
+        """
+        tok = self.expect(TokenType.SCHEMA)
+        name_tok = self.expect(TokenType.IDENTIFIER)
+        self.expect(TokenType.COLON)
+        self.expect(TokenType.NEWLINE)
+        self.expect(TokenType.INDENT)
+
+        fields: list[SchemaField] = []
+
+        while self.current().type != TokenType.DEDENT and not self.at_end():
+            self.skip_newlines()
+            if self.current().type == TokenType.DEDENT or self.at_end():
+                break
+
+            # Field name
+            field_tok = self.expect(TokenType.IDENTIFIER)
+            self.expect(TokenType.COLON)
+
+            # Type spec — first word (could be a keyword like "string" or "list")
+            type_tok = self.advance()
+            type_name = type_tok.value
+
+            # Handle "list of <type>"
+            if type_name == "list" and self.current().type == TokenType.OF:
+                self.advance()  # consume OF
+                element_type_tok = self.advance()
+                type_name = f"list of {element_type_tok.value}"
+
+            # Check for (optional) suffix
+            optional = False
+            if self.current().type == TokenType.LPAREN:
+                self.advance()  # consume (
+                self.expect(TokenType.OPTIONAL)
+                self.expect(TokenType.RPAREN)
+                optional = True
+
+            fields.append(SchemaField(
+                name=field_tok.value,
+                type_name=type_name,
+                optional=optional,
+                line=field_tok.line,
+                col=field_tok.column,
+            ))
+
+        # Consume DEDENT if present
+        if self.current().type == TokenType.DEDENT:
+            self.advance()
+
+        return SchemaDefinition(
+            name=name_tok.value,
+            fields=fields,
+            line=tok.line,
+            col=tok.column,
+        )
 
     # -- Expression parsing (recursive descent by precedence) --------------
 
