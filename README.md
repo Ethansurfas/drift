@@ -1,8 +1,10 @@
 # Drift
 
-An AI-native programming language that transpiles to Python.
+> **Warning** Drift is v0.1.0 — early and evolving. The compiler and runtime work, but expect rough edges.
 
-Drift treats AI as a first-class primitive — no imports, no SDKs, no boilerplate. Just write `ai.ask(...)` and it works.
+A programming language anyone can understand.
+
+An AI-native programming language that transpiles to Python. Drift treats AI as a first-class primitive — no imports, no SDKs, no boilerplate. Just write `ai.ask(...)` and it works.
 
 ```drift
 -- Analyze a property deal in 5 lines
@@ -23,7 +25,7 @@ if score.roi > 15:
 
 ```bash
 # Install
-git clone https://github.com/yourusername/drift.git
+git clone https://github.com/ethansurfas/drift.git
 cd drift
 pip install -e .
 
@@ -238,6 +240,10 @@ python3 -m pytest -v
 
 - Python 3.11+
 - For AI features: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+
+## Story
+
+Built with the help of Claude Code. Drift was designed and spec'd by a human who doesn't write code — and built by AI. That's the whole point.
 
 ## License
 
