@@ -129,9 +129,9 @@ class Transpiler:
         return [f"{self._indent()}print({value})"]
 
     def _emit_log(self, node: LogStatement) -> list[str]:
-        """Emit ``print(value)`` (log maps to print)."""
+        """Emit ``drift_runtime.log(value)``."""
         value = self._emit_expr(node.value)
-        return [f"{self._indent()}print({value})"]
+        return [f"{self._indent()}drift_runtime.log({value})"]
 
     # -- Expression emission -----------------------------------------------
 
@@ -268,8 +268,8 @@ class Transpiler:
     }
 
     _ERROR_TYPE_MAP = {
-        "network_error": "ConnectionError",
-        "ai_error": "RuntimeError",
+        "network_error": "drift_runtime.DriftNetworkError",
+        "ai_error": "drift_runtime.DriftAIError",
     }
 
     def _map_type(self, drift_type: str) -> str:
@@ -539,17 +539,10 @@ class Transpiler:
             return [f"{self._indent()}_pipe = _pipe[{count}:]"]
 
         if isinstance(stage, GroupStage):
-            ind = self._indent()
-            return [
-                f"{ind}_groups = {{}}",
-                f"{ind}for _item in _pipe:",
-                f"{ind}    _key = _item[\"{stage.field_name}\"]",
-                f"{ind}    _groups.setdefault(_key, []).append(_item)",
-                f'{ind}_pipe = [{{"key": k, "items": v}} for k, v in _groups.items()]',
-            ]
+            return [f'{self._indent()}_pipe = drift_runtime.group_by(_pipe, "{stage.field_name}")']
 
         if isinstance(stage, DeduplicateStage):
-            return [f'{self._indent()}_pipe = list({{_item["{stage.field_name}"]: _item for _item in _pipe}}.values())']
+            return [f'{self._indent()}_pipe = drift_runtime.deduplicate(_pipe, "{stage.field_name}")']
 
         if isinstance(stage, EachStage):
             lines: list[str] = []

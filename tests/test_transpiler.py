@@ -463,3 +463,39 @@ def test_pipeline_filter_with_and():
     src = 'results = data\n  |> filter where price < 500000 and beds >= 3'
     code = transpile(src)
     python_ast.parse(code)
+
+
+# ── drift_runtime alignment tests ───────────────────────────────────────────
+
+
+def test_log_emits_drift_runtime_log():
+    """log should emit drift_runtime.log(), not print()."""
+    code = transpile('log "hello"')
+    assert "drift_runtime.log" in code
+
+
+def test_catch_network_error_emits_drift_exception():
+    """catch network_error should emit DriftNetworkError, not ConnectionError."""
+    code = transpile('try:\n  x = 1\ncatch network_error:\n  print "fail"')
+    assert "drift_runtime.DriftNetworkError" in code
+    assert "ConnectionError" not in code
+
+
+def test_catch_ai_error_emits_drift_exception():
+    """catch ai_error should emit DriftAIError, not RuntimeError."""
+    code = transpile('try:\n  x = 1\ncatch ai_error:\n  print "fail"')
+    assert "drift_runtime.DriftAIError" in code
+
+
+def test_deduplicate_uses_runtime_helper():
+    """deduplicate by field should use drift_runtime.deduplicate()."""
+    source = 'results = fetch "https://api.example.com"\n  |> deduplicate by name'
+    code = transpile(source)
+    assert "drift_runtime.deduplicate" in code
+
+
+def test_group_by_uses_runtime_helper():
+    """group by field should use drift_runtime.group_by()."""
+    source = 'results = fetch "https://api.example.com"\n  |> group by city'
+    code = transpile(source)
+    assert "drift_runtime.group_by" in code
