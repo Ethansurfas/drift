@@ -160,8 +160,54 @@ cd /Users/ethansurfas/drift && python3 -m pytest -v
 | `\|> sort by x desc` | `sorted(_pipe, key=lambda _item: _item["x"], reverse=True)` |
 | `\|> take 10` | `_pipe[:10]` |
 
+## Project Structure (Full)
+
+```
+drift/
+├── drift/              # Compiler package (Phase 1 — complete)
+│   ├── lexer.py        # Tokenizer (INDENT/DEDENT tracking)
+│   ├── parser.py       # Recursive descent parser
+│   ├── ast_nodes.py    # 48 dataclass AST node types
+│   ├── transpiler.py   # AST → Python code generator
+│   ├── cli.py          # drift check/build/run
+│   └── errors.py       # LexerError, ParseError, TranspileError
+├── drift_runtime/      # Runtime package (Phase 2)
+│   ├── __init__.py     # Exports: ai, fetch, read, save, query, merge, log
+│   ├── ai.py           # DriftAI class: ask, classify, embed, see, predict, enrich, score
+│   ├── data.py         # fetch (httpx), read, save, query, merge
+│   ├── config.py       # Loads drift.config YAML, caches result
+│   ├── types.py        # ConfidentValue, schema_to_json_description, parse_ai_response_to_schema
+│   ├── pipeline.py     # deduplicate, group_by helpers
+│   └── exceptions.py   # DriftRuntimeError, DriftAIError, DriftNetworkError, DriftFileError, DriftConfigError
+├── tests/              # 354+ tests
+├── examples/           # hello.drift, pipeline.drift, deal_analyzer.drift
+├── docs/plans/         # Design docs
+├── DRIFT_LANGUAGE_SPEC.md
+└── DRIFT_PHASE2_RUNTIME_SPEC.md
+```
+
 ## Current Status
 
 - **Phase 1 complete:** Lexer, parser, transpiler, CLI, 354 tests
-- **Phase 3 next:** `drift_runtime` module (makes `drift run` work end-to-end)
+- **Phase 2 next:** `drift_runtime` package (see `DRIFT_PHASE2_RUNTIME_SPEC.md`)
 - **Deferred:** Agent syntax (v2), retry/fallback error handling, REPL, VS Code extension
+
+## Phase 2 Warnings (READ THESE BEFORE IMPLEMENTING)
+
+### 1. AI response parsing is fragile
+LLMs return JSON wrapped in markdown code fences (` ```json ... ``` `), with extra whitespace, or with slight schema mismatches. `parse_ai_response_to_schema()` must strip fences and handle malformed responses gracefully. Test with fenced, unfenced, and malformed JSON.
+
+### 2. Mock testing is mandatory
+Every AI test MUST use `unittest.mock.patch` so tests pass without an API key. Do NOT write tests that make real API calls unless explicitly marked with the `requires_api_key` decorator (`pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), ...)`). The mock target is `DriftAI._call_model`.
+
+### 3. Transpiler output must match runtime API exactly
+If the transpiler emits `drift_runtime.fetch(url)` but the runtime function signature is `fetch(url, headers=None, params=None)`, things break silently. Task 10 in the Phase 2 plan exists specifically to catch these mismatches. After building the runtime, re-verify every transpiler output pattern against the actual function signatures.
+
+Known items to verify:
+- `catch network_error:` should transpile to `except drift_runtime.DriftNetworkError:` (not generic `ConnectionError`)
+- `log "msg"` should transpile to `drift_runtime.log(...)` (not bare `print()`)
+- Pipeline `deduplicate by field` should use `drift_runtime.deduplicate(data, "field")`
+- Pipeline `group by field` should use `drift_runtime.group_by(data, "field")`
+
+### 4. Config caching pollutes tests
+`drift_runtime.config` caches after first `get_config()` call. Tests MUST call `_reset_config()` before each test to clear the cache, otherwise tests pollute each other with stale config values.
