@@ -40,6 +40,15 @@ from drift.ast_nodes import (
     SaveStatement,
     QueryExpression,
     MergeExpression,
+    Pipeline,
+    FilterStage,
+    SortStage,
+    TakeStage,
+    SkipStage,
+    GroupStage,
+    DeduplicateStage,
+    TransformStage,
+    EachStage,
 )
 from drift.errors import ParseError
 
@@ -789,3 +798,134 @@ class TestDataOperations:
         src = 'data = fetch "http://example.com"\nprint data'
         prog = parse(src)
         assert len(prog.body) == 2
+
+
+# ---------------------------------------------------------------------------
+# Pipelines
+# ---------------------------------------------------------------------------
+
+class TestPipelines:
+    def test_pipeline_filter(self):
+        src = 'results = data\n  |> filter where price < 500000'
+        prog = parse(src)
+        stmt = prog.body[0]
+        assert isinstance(stmt.value, Pipeline)
+        assert len(stmt.value.stages) == 1
+        assert isinstance(stmt.value.stages[0], FilterStage)
+
+    def test_pipeline_sort(self):
+        src = "results = data\n  |> sort by price ascending"
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe.stages[0], SortStage)
+        assert pipe.stages[0].field_name == "price"
+        assert pipe.stages[0].direction == "ascending"
+
+    def test_pipeline_sort_descending(self):
+        src = "results = data\n  |> sort by score descending"
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert pipe.stages[0].direction == "descending"
+
+    def test_pipeline_take(self):
+        src = "results = data\n  |> take 10"
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe.stages[0], TakeStage)
+
+    def test_pipeline_skip(self):
+        src = "results = data\n  |> skip 5"
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe.stages[0], SkipStage)
+
+    def test_pipeline_chain(self):
+        src = 'results = data\n  |> filter where x > 5\n  |> sort by x descending\n  |> take 10'
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe, Pipeline)
+        assert len(pipe.stages) == 3
+
+    def test_pipeline_deduplicate(self):
+        src = "results = data\n  |> deduplicate by address"
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe.stages[0], DeduplicateStage)
+        assert pipe.stages[0].field_name == "address"
+
+    def test_pipeline_group(self):
+        src = "results = data\n  |> group by city"
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe.stages[0], GroupStage)
+        assert pipe.stages[0].field_name == "city"
+
+    def test_pipeline_ai_enrich(self):
+        src = 'results = data\n  |> ai.enrich("Add summary")'
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe.stages[0], AIEnrich)
+
+    def test_pipeline_ai_score(self):
+        src = 'results = data\n  |> ai.score("Rate 1-100") -> number'
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe.stages[0], AIScore)
+
+    def test_pipeline_each(self):
+        src = 'results = data\n  |> each { |item|\n    print item\n  }'
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe.stages[0], EachStage)
+        assert pipe.stages[0].variable == "item"
+        assert len(pipe.stages[0].body) >= 1
+
+    def test_pipeline_save(self):
+        src = 'data\n  |> filter where x > 5\n  |> save to "out.csv"'
+        prog = parse(src)
+        # This is a standalone pipeline (not assigned)
+        # The result should still be parseable
+        pipe = prog.body[0]
+        assert isinstance(pipe, Pipeline)
+        assert len(pipe.stages) == 2
+        assert isinstance(pipe.stages[0], FilterStage)
+        assert isinstance(pipe.stages[1], SaveStatement)
+
+    def test_pipeline_with_fetch_source(self):
+        src = 'results = fetch "https://api.example.com/listings"\n  |> filter where price < 500000\n  |> take 10'
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe, Pipeline)
+        assert isinstance(pipe.source, FetchExpression)
+        assert len(pipe.stages) == 2
+
+    def test_pipeline_then_more_code(self):
+        src = 'results = data\n  |> take 5\nprint "done"'
+        prog = parse(src)
+        assert len(prog.body) == 2
+        assert isinstance(prog.body[0].value, Pipeline)
+        assert isinstance(prog.body[1], PrintStatement)
+
+    def test_pipeline_filter_with_and(self):
+        src = 'results = data\n  |> filter where price < 500000 and beds >= 3'
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe, Pipeline)
+        stage = pipe.stages[0]
+        assert isinstance(stage, FilterStage)
+        assert isinstance(stage.condition, BinaryOp)
+        assert stage.condition.op == "and"
+
+    def test_pipeline_sort_default_direction(self):
+        src = "results = data\n  |> sort by price"
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe.stages[0], SortStage)
+        assert pipe.stages[0].direction == "ascending"
+
+    def test_pipeline_transform(self):
+        src = 'results = data\n  |> transform { |item| item.price * 1.1 }'
+        prog = parse(src)
+        pipe = prog.body[0].value
+        assert isinstance(pipe.stages[0], TransformStage)
+        assert pipe.stages[0].variable == "item"

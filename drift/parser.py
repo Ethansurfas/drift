@@ -42,6 +42,15 @@ from drift.ast_nodes import (
     SaveStatement,
     QueryExpression,
     MergeExpression,
+    Pipeline,
+    FilterStage,
+    SortStage,
+    TakeStage,
+    SkipStage,
+    GroupStage,
+    DeduplicateStage,
+    TransformStage,
+    EachStage,
 )
 
 
@@ -158,8 +167,9 @@ class Parser:
             ):
                 return self.parse_assignment()
 
-        # Otherwise, expression statement
-        return self.parse_expression()
+        # Otherwise, expression statement (possibly the source of a pipeline)
+        expr = self.parse_expression()
+        return self._maybe_parse_pipeline(expr)
 
     def parse_assignment(self):
         """Parse an assignment statement: ``target [: type] = value``."""
@@ -175,6 +185,7 @@ class Parser:
 
         self.expect(TokenType.EQUALS)
         value = self.parse_expression()
+        value = self._maybe_parse_pipeline(value)
         return Assignment(target=target, type_hint=type_hint, value=value, line=line, col=col)
 
     def parse_print(self):
@@ -875,6 +886,184 @@ class Parser:
         tok = self.advance()  # consume MERGE
         list_node = self._parse_list_literal()
         return MergeExpression(sources=list_node.elements, line=tok.line, col=tok.column)
+
+    # -- Pipeline parsing ---------------------------------------------------
+
+    def _maybe_parse_pipeline(self, source):
+        """If ``|>`` follows (possibly after newlines/indent), parse a pipeline.
+
+        Otherwise return *source* unchanged.  This method saves and restores
+        the parser position when no pipeline is found so that the caller is
+        unaffected.
+        """
+        saved_pos = self.pos
+        # Skip NEWLINE, INDENT, DEDENT tokens that the lexer injects between
+        # the source expression and the first |> stage.
+        self._skip_whitespace_tokens()
+        if not self.at_end() and self.current().type == TokenType.PIPE_ARROW:
+            stages = []
+            while not self.at_end() and self.current().type == TokenType.PIPE_ARROW:
+                self.advance()  # consume |>
+                stage = self._parse_pipeline_stage()
+                stages.append(stage)
+                # Between stages we may see NEWLINE tokens (same indent level).
+                # Skip them to find the next |> or the end of the pipeline.
+                self._skip_whitespace_tokens()
+            return Pipeline(source=source, stages=stages, line=source.line, col=source.col)
+        else:
+            self.pos = saved_pos  # restore — no pipeline found
+            return source
+
+    def _parse_pipeline_stage(self):
+        """Parse a single pipeline stage after ``|>`` has been consumed."""
+        tok = self.current()
+
+        # filter where <condition>
+        if tok.type == TokenType.FILTER:
+            return self._parse_filter_stage()
+
+        # sort by <field> [ascending|descending]
+        if tok.type == TokenType.SORT:
+            return self._parse_sort_stage()
+
+        # take <n>
+        if tok.type == TokenType.TAKE:
+            return self._parse_take_stage()
+
+        # skip <n>
+        if tok.type == TokenType.SKIP:
+            return self._parse_skip_stage()
+
+        # group by <field>
+        if tok.type == TokenType.GROUP:
+            return self._parse_group_stage()
+
+        # deduplicate by <field>
+        if tok.type == TokenType.DEDUPLICATE:
+            return self._parse_deduplicate_stage()
+
+        # each { |var| body }
+        if tok.type == TokenType.EACH:
+            return self._parse_each_stage()
+
+        # transform { |var| body }
+        if tok.type == TokenType.TRANSFORM:
+            return self._parse_transform_stage()
+
+        # ai.enrich(...) or ai.score(...)
+        if tok.type == TokenType.IDENTIFIER and tok.value == "ai":
+            return self._parse_ai_pipeline_stage()
+
+        # save to <path>
+        if tok.type == TokenType.SAVE:
+            return self._parse_save_stage()
+
+        raise ParseError(
+            f"Unknown pipeline stage: {tok.type.name} ({tok.value!r})",
+            tok.line,
+            tok.column,
+        )
+
+    def _parse_filter_stage(self):
+        """Parse ``filter where <condition>``."""
+        tok = self.expect(TokenType.FILTER)
+        self.expect(TokenType.WHERE)
+        condition = self.parse_expression()
+        return FilterStage(condition=condition, line=tok.line, col=tok.column)
+
+    def _parse_sort_stage(self):
+        """Parse ``sort by <field> [ascending|descending]``."""
+        tok = self.expect(TokenType.SORT)
+        self.expect(TokenType.BY)
+        field_tok = self.expect(TokenType.IDENTIFIER)
+        direction = "ascending"
+        if self.current().type == TokenType.ASCENDING:
+            self.advance()
+            direction = "ascending"
+        elif self.current().type == TokenType.DESCENDING:
+            self.advance()
+            direction = "descending"
+        return SortStage(field_name=field_tok.value, direction=direction, line=tok.line, col=tok.column)
+
+    def _parse_take_stage(self):
+        """Parse ``take <expression>``."""
+        tok = self.expect(TokenType.TAKE)
+        count = self.parse_expression()
+        return TakeStage(count=count, line=tok.line, col=tok.column)
+
+    def _parse_skip_stage(self):
+        """Parse ``skip <expression>``."""
+        tok = self.expect(TokenType.SKIP)
+        count = self.parse_expression()
+        return SkipStage(count=count, line=tok.line, col=tok.column)
+
+    def _parse_group_stage(self):
+        """Parse ``group by <field>``."""
+        tok = self.expect(TokenType.GROUP)
+        self.expect(TokenType.BY)
+        field_tok = self.expect(TokenType.IDENTIFIER)
+        return GroupStage(field_name=field_tok.value, line=tok.line, col=tok.column)
+
+    def _parse_deduplicate_stage(self):
+        """Parse ``deduplicate by <field>``."""
+        tok = self.expect(TokenType.DEDUPLICATE)
+        self.expect(TokenType.BY)
+        field_tok = self.expect(TokenType.IDENTIFIER)
+        return DeduplicateStage(field_name=field_tok.value, line=tok.line, col=tok.column)
+
+    def _parse_each_stage(self):
+        """Parse ``each { |var| body }``."""
+        tok = self.expect(TokenType.EACH)
+        self.expect(TokenType.LBRACE)
+        self._skip_whitespace_tokens()
+        self.expect(TokenType.PIPE)
+        var_tok = self.expect(TokenType.IDENTIFIER)
+        self.expect(TokenType.PIPE)
+        self._skip_whitespace_tokens()
+
+        body = []
+        while self.current().type != TokenType.RBRACE and not self.at_end():
+            self._skip_whitespace_tokens()
+            if self.current().type == TokenType.RBRACE:
+                break
+            body.append(self.parse_statement())
+            self._skip_whitespace_tokens()
+
+        self.expect(TokenType.RBRACE)
+        return EachStage(variable=var_tok.value, body=body, line=tok.line, col=tok.column)
+
+    def _parse_transform_stage(self):
+        """Parse ``transform { |var| body }``."""
+        tok = self.expect(TokenType.TRANSFORM)
+        self.expect(TokenType.LBRACE)
+        self._skip_whitespace_tokens()
+        self.expect(TokenType.PIPE)
+        var_tok = self.expect(TokenType.IDENTIFIER)
+        self.expect(TokenType.PIPE)
+        self._skip_whitespace_tokens()
+
+        body = []
+        while self.current().type != TokenType.RBRACE and not self.at_end():
+            self._skip_whitespace_tokens()
+            if self.current().type == TokenType.RBRACE:
+                break
+            body.append(self.parse_statement())
+            self._skip_whitespace_tokens()
+
+        self.expect(TokenType.RBRACE)
+        return TransformStage(variable=var_tok.value, body=body, line=tok.line, col=tok.column)
+
+    def _parse_ai_pipeline_stage(self):
+        """Parse an AI primitive (``ai.enrich(...)`` or ``ai.score(...)``) as a pipeline stage."""
+        # Parse as a normal expression — the postfix handler recognizes ai.method()
+        return self.parse_expression()
+
+    def _parse_save_stage(self):
+        """Parse ``save to <path>`` as a pipeline terminal stage."""
+        tok = self.expect(TokenType.SAVE)
+        self.expect(TokenType.TO)
+        path = self.parse_expression()
+        return SaveStatement(data=None, path=path, line=tok.line, col=tok.column)
 
     # -- String interpolation ----------------------------------------------
 
