@@ -18,6 +18,13 @@ from drift.ast_nodes import (
     Assignment,
     PrintStatement,
     LogStatement,
+    SchemaDefinition,
+    FunctionDef,
+    ReturnStatement,
+    IfStatement,
+    ForEach,
+    MatchStatement,
+    TryCatch,
 )
 from drift.errors import TranspileError
 
@@ -63,6 +70,20 @@ class Transpiler:
             return self._emit_print(node)
         if isinstance(node, LogStatement):
             return self._emit_log(node)
+        if isinstance(node, SchemaDefinition):
+            return self._emit_schema(node)
+        if isinstance(node, FunctionDef):
+            return self._emit_function(node)
+        if isinstance(node, ReturnStatement):
+            return self._emit_return(node)
+        if isinstance(node, IfStatement):
+            return self._emit_if(node)
+        if isinstance(node, ForEach):
+            return self._emit_for_each(node)
+        if isinstance(node, MatchStatement):
+            return self._emit_match(node)
+        if isinstance(node, TryCatch):
+            return self._emit_try_catch(node)
 
         raise TranspileError(
             f"Unsupported statement type: {type(node).__name__}",
@@ -182,3 +203,165 @@ class Transpiler:
         for key, val in node.kwargs.items():
             parts.append(f"{key}={self._emit_expr(val)}")
         return f"{callee}({', '.join(parts)})"
+
+    # -- Type mapping --------------------------------------------------------
+
+    _TYPE_MAP = {
+        "string": "str",
+        "number": "float",
+        "boolean": "bool",
+        "list": "list",
+        "map": "dict",
+        "date": "str",
+        "none": "None",
+    }
+
+    _ERROR_TYPE_MAP = {
+        "network_error": "ConnectionError",
+        "ai_error": "RuntimeError",
+    }
+
+    def _map_type(self, drift_type: str) -> str:
+        """Map a Drift type annotation to a Python type string."""
+        # Handle compound "list of <element_type>"
+        if drift_type.startswith("list of "):
+            element = drift_type[len("list of "):]
+            inner = self._TYPE_MAP.get(element, element)
+            return f"list[{inner}]"
+        return self._TYPE_MAP.get(drift_type, drift_type)
+
+    def _map_error_type(self, drift_error: str) -> str:
+        """Map a Drift error type to a Python exception class name."""
+        return self._ERROR_TYPE_MAP.get(drift_error, "Exception")
+
+    # -- Schema emission -----------------------------------------------------
+
+    def _emit_schema(self, node: SchemaDefinition) -> list[str]:
+        """Emit a ``@dataclass`` class from a Drift schema."""
+        self.needs_dataclass_import = True
+        lines: list[str] = []
+        lines.append(f"{self._indent()}@dataclass")
+        lines.append(f"{self._indent()}class {node.name}:")
+        self.indent_level += 1
+        for fld in node.fields:
+            py_type = self._map_type(fld.type_name)
+            if fld.optional:
+                lines.append(f"{self._indent()}{fld.name}: {py_type} = None")
+            else:
+                lines.append(f"{self._indent()}{fld.name}: {py_type}")
+        self.indent_level -= 1
+        return lines
+
+    # -- Function emission ---------------------------------------------------
+
+    def _emit_function(self, node: FunctionDef) -> list[str]:
+        """Emit a Python ``def`` from a Drift ``define``."""
+        # Build parameter list
+        param_parts: list[str] = []
+        for pname, ptype in node.params:
+            if ptype:
+                param_parts.append(f"{pname}: {self._map_type(ptype)}")
+            else:
+                param_parts.append(pname)
+        params_str = ", ".join(param_parts)
+
+        # Build return type annotation
+        ret = ""
+        if node.return_type:
+            ret = f" -> {self._map_type(node.return_type)}"
+
+        lines: list[str] = []
+        lines.append(f"{self._indent()}def {node.name}({params_str}){ret}:")
+        self.indent_level += 1
+        for stmt in node.body:
+            lines.extend(self._emit_statement(stmt))
+        self.indent_level -= 1
+        return lines
+
+    # -- Return emission -----------------------------------------------------
+
+    def _emit_return(self, node: ReturnStatement) -> list[str]:
+        """Emit ``return <expr>``."""
+        value = self._emit_expr(node.value)
+        return [f"{self._indent()}return {value}"]
+
+    # -- If / Else If / Else emission ----------------------------------------
+
+    def _emit_if(self, node: IfStatement) -> list[str]:
+        """Emit ``if / elif / else`` chain."""
+        lines: list[str] = []
+        cond = self._emit_expr(node.condition)
+        lines.append(f"{self._indent()}if {cond}:")
+        self.indent_level += 1
+        for stmt in node.body:
+            lines.extend(self._emit_statement(stmt))
+        self.indent_level -= 1
+
+        for ei_cond, ei_body in node.elseifs:
+            ei_cond_str = self._emit_expr(ei_cond)
+            lines.append(f"{self._indent()}elif {ei_cond_str}:")
+            self.indent_level += 1
+            for stmt in ei_body:
+                lines.extend(self._emit_statement(stmt))
+            self.indent_level -= 1
+
+        if node.else_body:
+            lines.append(f"{self._indent()}else:")
+            self.indent_level += 1
+            for stmt in node.else_body:
+                lines.extend(self._emit_statement(stmt))
+            self.indent_level -= 1
+
+        return lines
+
+    # -- For Each emission ---------------------------------------------------
+
+    def _emit_for_each(self, node: ForEach) -> list[str]:
+        """Emit ``for <var> in <iterable>:``."""
+        iterable = self._emit_expr(node.iterable)
+        lines: list[str] = []
+        lines.append(f"{self._indent()}for {node.variable} in {iterable}:")
+        self.indent_level += 1
+        for stmt in node.body:
+            lines.extend(self._emit_statement(stmt))
+        self.indent_level -= 1
+        return lines
+
+    # -- Match emission ------------------------------------------------------
+
+    def _emit_match(self, node: MatchStatement) -> list[str]:
+        """Emit Python 3.10+ ``match / case`` from Drift ``match``."""
+        subject = self._emit_expr(node.subject)
+        lines: list[str] = []
+        lines.append(f"{self._indent()}match {subject}:")
+        self.indent_level += 1
+        for arm in node.arms:
+            pattern = self._emit_expr(arm.pattern)
+            lines.append(f"{self._indent()}case {pattern}:")
+            self.indent_level += 1
+            # arm.body is a single statement, not a list
+            lines.extend(self._emit_statement(arm.body))
+            self.indent_level -= 1
+        self.indent_level -= 1
+        return lines
+
+    # -- Try / Catch emission ------------------------------------------------
+
+    def _emit_try_catch(self, node: TryCatch) -> list[str]:
+        """Emit ``try / except`` from Drift ``try / catch``."""
+        lines: list[str] = []
+        lines.append(f"{self._indent()}try:")
+        self.indent_level += 1
+        for stmt in node.try_body:
+            lines.extend(self._emit_statement(stmt))
+        self.indent_level -= 1
+
+        for catch in node.catches:
+            py_exc = self._map_error_type(catch.error_type)
+            lines.append(f"{self._indent()}except {py_exc}:")
+            self.indent_level += 1
+            for stmt in catch.body:
+                lines.extend(self._emit_statement(stmt))
+            self.indent_level -= 1
+
+        return lines

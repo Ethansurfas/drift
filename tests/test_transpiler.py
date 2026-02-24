@@ -1,4 +1,4 @@
-"""Tests for Drift transpiler — literals, expressions, assignments."""
+"""Tests for Drift transpiler — literals, expressions, assignments, schemas, functions, control flow."""
 
 import ast as python_ast
 
@@ -137,3 +137,123 @@ def test_multiple_statements():
 def test_output_is_valid_python():
     code = transpile('x = 42\nname = "hello"\nprint "test"')
     python_ast.parse(code)  # This is the key validation
+
+
+# ── Schema → @dataclass ─────────────────────────────────────────────────────
+
+
+def test_schema_to_dataclass():
+    src = "schema Deal:\n  address: string\n  price: number"
+    code = transpile(src)
+    assert "@dataclass" in code
+    assert "class Deal:" in code
+    assert "address: str" in code
+    assert "price: float" in code
+    assert "from dataclasses import dataclass" in code
+    python_ast.parse(code)
+
+
+def test_schema_optional_field():
+    src = "schema X:\n  data: map (optional)"
+    code = transpile(src)
+    assert "data: dict = None" in code
+    python_ast.parse(code)
+
+
+def test_schema_list_of_type():
+    src = "schema X:\n  items: list of string"
+    code = transpile(src)
+    assert "list[str]" in code
+    python_ast.parse(code)
+
+
+# ── Function Definition ─────────────────────────────────────────────────────
+
+
+def test_function_def():
+    src = 'define greet(name: string):\n  print name'
+    code = transpile(src)
+    assert "def greet(name: str):" in code
+    python_ast.parse(code)
+
+
+def test_function_with_return_type():
+    src = "define add(a: number, b: number) -> number:\n  return a + b"
+    code = transpile(src)
+    assert "def add(a: float, b: float) -> float:" in code
+    assert "return" in code
+    python_ast.parse(code)
+
+
+def test_function_no_params():
+    src = 'define hello():\n  print "hi"'
+    code = transpile(src)
+    assert "def hello():" in code
+    python_ast.parse(code)
+
+
+# ── Return Statement ────────────────────────────────────────────────────────
+
+
+def test_return_expression():
+    src = "define f():\n  return 42"
+    code = transpile(src)
+    assert "return 42" in code
+    python_ast.parse(code)
+
+
+# ── If / Else If / Else ─────────────────────────────────────────────────────
+
+
+def test_if_simple():
+    src = 'if x > 5:\n  print "big"'
+    code = transpile(src)
+    assert "if " in code
+    python_ast.parse(code)
+
+
+def test_if_else():
+    src = 'if x > 5:\n  print "big"\nelse:\n  print "small"'
+    code = transpile(src)
+    assert "if " in code
+    assert "else:" in code
+    python_ast.parse(code)
+
+
+def test_if_elseif_else():
+    src = 'if x > 10:\n  print "a"\nelse if x > 5:\n  print "b"\nelse:\n  print "c"'
+    code = transpile(src)
+    assert "elif " in code
+    python_ast.parse(code)
+
+
+# ── For Each ────────────────────────────────────────────────────────────────
+
+
+def test_for_each():
+    src = "for each item in items:\n  print item"
+    code = transpile(src)
+    assert "for item in items:" in code
+    python_ast.parse(code)
+
+
+# ── Match Statement ─────────────────────────────────────────────────────────
+
+
+def test_match_statement():
+    src = 'match status:\n  200 -> print "ok"\n  _ -> print "error"'
+    code = transpile(src)
+    assert "match " in code
+    assert "case " in code
+    python_ast.parse(code)
+
+
+# ── Try / Catch ─────────────────────────────────────────────────────────────
+
+
+def test_try_catch():
+    src = 'try:\n  x = 1\ncatch network_error:\n  log "fail"'
+    code = transpile(src)
+    assert "try:" in code
+    assert "except " in code
+    python_ast.parse(code)
