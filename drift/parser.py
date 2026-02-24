@@ -24,6 +24,10 @@ from drift.ast_nodes import (
     LogStatement,
     SchemaDefinition,
     SchemaField,
+    IfStatement,
+    ForEach,
+    MatchStatement,
+    MatchArm,
 )
 
 
@@ -115,6 +119,12 @@ class Parser:
             return self.parse_log()
         if self.current().type == TokenType.SCHEMA:
             return self.parse_schema()
+        if self.current().type == TokenType.IF:
+            return self.parse_if()
+        if self.current().type == TokenType.FOR:
+            return self.parse_for_each()
+        if self.current().type == TokenType.MATCH:
+            return self.parse_match()
 
         if self.current().type == TokenType.IDENTIFIER:
             # Check for assignment: IDENTIFIER EQUALS ...
@@ -219,6 +229,124 @@ class Parser:
         return SchemaDefinition(
             name=name_tok.value,
             fields=fields,
+            line=tok.line,
+            col=tok.column,
+        )
+
+    # -- Block and control flow parsing ------------------------------------
+
+    def parse_block(self) -> list:
+        """Parse NEWLINE INDENT <statements> DEDENT and return the statement list."""
+        self.skip_newlines()
+        self.expect(TokenType.INDENT)
+        stmts = []
+        while not self.at_end() and self.current().type != TokenType.DEDENT:
+            self.skip_newlines()
+            if self.current().type == TokenType.DEDENT:
+                break
+            stmts.append(self.parse_statement())
+            self.skip_newlines()
+        if self.current().type == TokenType.DEDENT:
+            self.advance()  # consume DEDENT
+        return stmts
+
+    def parse_if(self):
+        """Parse an if / else-if / else statement."""
+        tok = self.expect(TokenType.IF)
+        condition = self.parse_expression()
+        self.expect(TokenType.COLON)
+        body = self.parse_block()
+
+        elseifs: list[tuple] = []
+        else_body: list | None = None
+
+        # After the block, check for else-if or else chains
+        while True:
+            self.skip_newlines()
+            if self.current().type == TokenType.ELSE:
+                if self.peek().type == TokenType.IF:
+                    # else if branch
+                    self.advance()  # consume ELSE
+                    self.advance()  # consume IF
+                    ei_condition = self.parse_expression()
+                    self.expect(TokenType.COLON)
+                    ei_body = self.parse_block()
+                    elseifs.append((ei_condition, ei_body))
+                else:
+                    # plain else branch
+                    self.advance()  # consume ELSE
+                    self.expect(TokenType.COLON)
+                    else_body = self.parse_block()
+                    break
+            else:
+                break
+
+        return IfStatement(
+            condition=condition,
+            body=body,
+            elseifs=elseifs,
+            else_body=else_body,
+            line=tok.line,
+            col=tok.column,
+        )
+
+    def parse_for_each(self):
+        """Parse a for-each loop: ``for each <var> in <iterable>: <body>``."""
+        tok = self.expect(TokenType.FOR)
+        self.expect(TokenType.EACH)
+        var_tok = self.expect(TokenType.IDENTIFIER)
+        self.expect(TokenType.IN)
+        iterable = self.parse_expression()
+        self.expect(TokenType.COLON)
+        body = self.parse_block()
+
+        return ForEach(
+            variable=var_tok.value,
+            iterable=iterable,
+            body=body,
+            line=tok.line,
+            col=tok.column,
+        )
+
+    def parse_match(self):
+        """Parse a match statement with pattern arms."""
+        tok = self.expect(TokenType.MATCH)
+        subject = self.parse_expression()
+        self.expect(TokenType.COLON)
+
+        # Parse indented block of match arms
+        self.skip_newlines()
+        self.expect(TokenType.INDENT)
+
+        arms: list[MatchArm] = []
+        while not self.at_end() and self.current().type != TokenType.DEDENT:
+            self.skip_newlines()
+            if self.current().type == TokenType.DEDENT:
+                break
+
+            # Parse pattern (expression or _ wildcard)
+            pattern = self.parse_expression()
+
+            # Expect ->
+            self.expect(TokenType.ARROW)
+
+            # Parse the arm body (a single statement)
+            arm_body = self.parse_statement()
+
+            arms.append(MatchArm(
+                pattern=pattern,
+                body=arm_body,
+                line=pattern.line,
+                col=pattern.col,
+            ))
+            self.skip_newlines()
+
+        if self.current().type == TokenType.DEDENT:
+            self.advance()  # consume DEDENT
+
+        return MatchStatement(
+            subject=subject,
+            arms=arms,
             line=tok.line,
             col=tok.column,
         )

@@ -22,6 +22,10 @@ from drift.ast_nodes import (
     LogStatement,
     SchemaDefinition,
     SchemaField,
+    IfStatement,
+    ForEach,
+    MatchStatement,
+    MatchArm,
 )
 from drift.errors import ParseError
 
@@ -507,3 +511,91 @@ class TestMixedStatements:
         assert len(prog.body) == 2
         assert isinstance(prog.body[0], SchemaDefinition)
         assert isinstance(prog.body[1], PrintStatement)
+
+
+# ---------------------------------------------------------------------------
+# Control Flow — If / Else / Else-If
+# ---------------------------------------------------------------------------
+
+class TestIfStatement:
+    def test_if_simple(self):
+        src = 'if x > 5:\n  print "big"'
+        prog = parse(src)
+        stmt = prog.body[0]
+        assert isinstance(stmt, IfStatement)
+        assert isinstance(stmt.condition, BinaryOp)
+        assert len(stmt.body) == 1
+        assert stmt.else_body is None
+        assert len(stmt.elseifs) == 0
+
+    def test_if_else(self):
+        src = 'if x > 5:\n  print "big"\nelse:\n  print "small"'
+        prog = parse(src)
+        stmt = prog.body[0]
+        assert isinstance(stmt, IfStatement)
+        assert stmt.else_body is not None
+        assert len(stmt.else_body) == 1
+
+    def test_if_elseif_else(self):
+        src = 'if x > 10:\n  print "a"\nelse if x > 5:\n  print "b"\nelse:\n  print "c"'
+        prog = parse(src)
+        stmt = prog.body[0]
+        assert isinstance(stmt, IfStatement)
+        assert len(stmt.elseifs) == 1
+        assert stmt.else_body is not None
+
+    def test_if_with_and(self):
+        src = 'if x > 5 and y < 10:\n  print "range"'
+        prog = parse(src)
+        stmt = prog.body[0]
+        assert isinstance(stmt.condition, BinaryOp)
+        assert stmt.condition.op == "and"
+
+    def test_code_after_if(self):
+        src = 'if x > 5:\n  print "big"\ny = 2'
+        prog = parse(src)
+        assert len(prog.body) == 2
+        assert isinstance(prog.body[0], IfStatement)
+        assert isinstance(prog.body[1], Assignment)
+
+
+# ---------------------------------------------------------------------------
+# Control Flow — For Each
+# ---------------------------------------------------------------------------
+
+class TestForEach:
+    def test_for_each(self):
+        src = "for each item in items:\n  print item"
+        prog = parse(src)
+        stmt = prog.body[0]
+        assert isinstance(stmt, ForEach)
+        assert stmt.variable == "item"
+        assert isinstance(stmt.iterable, Identifier)
+        assert len(stmt.body) == 1
+
+    def test_for_each_dot_access(self):
+        src = "for each prop in listings:\n  print prop.name"
+        prog = parse(src)
+        stmt = prog.body[0]
+        assert isinstance(stmt, ForEach)
+
+
+# ---------------------------------------------------------------------------
+# Control Flow — Match Statement
+# ---------------------------------------------------------------------------
+
+class TestMatchStatement:
+    def test_match_statement(self):
+        src = 'match status:\n  200 -> print "ok"\n  404 -> print "not found"\n  _ -> print "error"'
+        prog = parse(src)
+        stmt = prog.body[0]
+        assert isinstance(stmt, MatchStatement)
+        assert len(stmt.arms) == 3
+
+    def test_match_wildcard(self):
+        src = 'match x:\n  1 -> print "one"\n  _ -> print "other"'
+        prog = parse(src)
+        stmt = prog.body[0]
+        last_arm = stmt.arms[-1]
+        assert isinstance(last_arm.pattern, Identifier)
+        assert last_arm.pattern.name == "_"
