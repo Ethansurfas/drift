@@ -1,0 +1,27 @@
+-- News Headline Analyzer (Online)
+-- Fetches today's headlines and analyzes sentiment + topic
+-- Requires: NEWSDATA_KEY (free from newsdata.io)
+
+headlines = fetch "https://newsdata.io/api/1/latest" with {
+  params: { apikey: env.NEWSDATA_KEY, language: "en", size: 5 }
+}
+
+results = headlines.results
+  |> ai.enrich("For each headline, analyze sentiment (positive/negative/neutral with confidence 0-1) and categorize the topic (politics/tech/business/sports/science/other). Add fields: sentiment, confidence, topic, summary")
+  |> take 5
+
+print "============================="
+print "  NEWS SENTIMENT ANALYZER"
+print "============================="
+print ""
+
+for each article in results:
+  print "Headline:   {article.title}"
+  print "Sentiment:  {article.sentiment} ({article.confidence})"
+  print "Topic:      {article.topic}"
+  print "Summary:    {article.summary}"
+  print "-----------------------------"
+
+save results to "news_analysis.json"
+print ""
+print "Full analysis saved to news_analysis.json"
