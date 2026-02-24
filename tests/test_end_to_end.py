@@ -42,7 +42,7 @@ def test_deal_analyzer_e2e():
     python_code = compile_drift(source)
     python_ast.parse(python_code)
     assert "drift_runtime.ai.ask" in python_code
-    assert "drift_runtime.fetch" in python_code
+    assert "drift_runtime.read" in python_code
     assert "@dataclass" in python_code
     assert "class DealScore" in python_code
 
