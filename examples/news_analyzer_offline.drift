@@ -1,0 +1,28 @@
+-- News Headline Analyzer (Offline Demo)
+-- Analyzes sample headlines with AI
+
+headlines = [
+  { "title": "Federal Reserve Holds Interest Rates Steady Amid Inflation Concerns" },
+  { "title": "SpaceX Successfully Launches Starship on Sixth Test Flight" },
+  { "title": "Apple Announces Record Q1 Revenue Driven by AI Features" },
+  { "title": "Scientists Discover New Species in Deep Ocean Trench" },
+  { "title": "NBA Playoffs: Knicks Advance to Eastern Conference Finals" }
+]
+
+results = headlines
+  |> ai.enrich("For each headline, add: sentiment (positive/negative/neutral), confidence (0.0-1.0), topic (politics/tech/business/sports/science), and a one-sentence summary")
+
+print "============================="
+print "  NEWS SENTIMENT ANALYZER"
+print "============================="
+print ""
+
+for each article in results:
+  print "Headline:   {article.title}"
+  print "Sentiment:  {article.sentiment} ({article.confidence})"
+  print "Topic:      {article.topic}"
+  print "Summary:    {article.summary}"
+  print "-----------------------------"
+
+save results to "news_analysis.json"
+print "Saved to news_analysis.json"
