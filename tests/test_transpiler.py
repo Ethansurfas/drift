@@ -257,3 +257,117 @@ def test_try_catch():
     assert "try:" in code
     assert "except " in code
     python_ast.parse(code)
+
+
+# ── AI Primitives ───────────────────────────────────────────────────────────
+
+
+def test_ai_ask_simple():
+    src = 'x = ai.ask("What is AI?")'
+    code = transpile(src)
+    assert "drift_runtime.ai.ask" in code
+    python_ast.parse(code)
+
+
+def test_ai_ask_with_schema():
+    src = 'x = ai.ask("Analyze") -> DealScore'
+    code = transpile(src)
+    assert "drift_runtime.ai.ask" in code
+    assert "schema=DealScore" in code
+    python_ast.parse(code)
+
+
+def test_ai_ask_with_using():
+    src = 'x = ai.ask("Analyze") -> Deal using {\n  address: addr\n  price: 100\n}'
+    code = transpile(src)
+    assert "drift_runtime.ai.ask" in code
+    assert "context=" in code
+    python_ast.parse(code)
+
+
+def test_ai_classify():
+    src = 'x = ai.classify(text, into: ["a", "b"])'
+    code = transpile(src)
+    assert "drift_runtime.ai.classify" in code
+    python_ast.parse(code)
+
+
+def test_ai_embed():
+    src = "x = ai.embed(doc)"
+    code = transpile(src)
+    assert "drift_runtime.ai.embed" in code
+    python_ast.parse(code)
+
+
+def test_ai_see():
+    src = 'x = ai.see(photo, "Describe this")'
+    code = transpile(src)
+    assert "drift_runtime.ai.see" in code
+    python_ast.parse(code)
+
+
+def test_ai_predict():
+    src = 'x = ai.predict("Estimate value") -> confident number'
+    code = transpile(src)
+    assert "drift_runtime.ai.predict" in code
+    python_ast.parse(code)
+
+
+def test_ai_enrich():
+    src = 'x = ai.enrich("Add summary")'
+    code = transpile(src)
+    assert "drift_runtime.ai.enrich" in code
+    python_ast.parse(code)
+
+
+def test_ai_score():
+    src = 'x = ai.score("Rate 1-100") -> number'
+    code = transpile(src)
+    assert "drift_runtime.ai.score" in code
+    python_ast.parse(code)
+
+
+# ── Data Operations ─────────────────────────────────────────────────────────
+
+
+def test_fetch_simple():
+    src = 'data = fetch "https://example.com/api"'
+    code = transpile(src)
+    assert "drift_runtime.fetch" in code
+    python_ast.parse(code)
+
+
+def test_fetch_with_options():
+    src = 'data = fetch "https://example.com" with {\n  headers: { "Key": "val" }\n}'
+    code = transpile(src)
+    assert "drift_runtime.fetch" in code
+    assert "headers=" in code
+    python_ast.parse(code)
+
+
+def test_read_file():
+    src = 'data = read "file.csv"'
+    code = transpile(src)
+    assert "drift_runtime.read" in code
+    python_ast.parse(code)
+
+
+def test_save_statement():
+    src = 'save data to "output.json"'
+    code = transpile(src)
+    assert "drift_runtime.save" in code
+    python_ast.parse(code)
+
+
+def test_query_expression():
+    src = 'records = query "SELECT * FROM users" on db.main'
+    code = transpile(src)
+    assert "drift_runtime.query" in code
+    python_ast.parse(code)
+
+
+def test_merge_expression():
+    src = 'combined = merge [a, b, c]'
+    code = transpile(src)
+    assert "drift_runtime.merge" in code
+    python_ast.parse(code)

@@ -25,6 +25,18 @@ from drift.ast_nodes import (
     ForEach,
     MatchStatement,
     TryCatch,
+    AIAsk,
+    AIClassify,
+    AIEmbed,
+    AISee,
+    AIPredict,
+    AIEnrich,
+    AIScore,
+    FetchExpression,
+    ReadExpression,
+    SaveStatement,
+    QueryExpression,
+    MergeExpression,
 )
 from drift.errors import TranspileError
 
@@ -84,6 +96,8 @@ class Transpiler:
             return self._emit_match(node)
         if isinstance(node, TryCatch):
             return self._emit_try_catch(node)
+        if isinstance(node, SaveStatement):
+            return self._emit_save(node)
 
         raise TranspileError(
             f"Unsupported statement type: {type(node).__name__}",
@@ -132,6 +146,30 @@ class Transpiler:
             return self._emit_unary_op(node)
         if isinstance(node, FunctionCall):
             return self._emit_function_call(node)
+        # AI primitives
+        if isinstance(node, AIAsk):
+            return self._emit_ai_ask(node)
+        if isinstance(node, AIClassify):
+            return self._emit_ai_classify(node)
+        if isinstance(node, AIEmbed):
+            return self._emit_ai_embed(node)
+        if isinstance(node, AISee):
+            return self._emit_ai_see(node)
+        if isinstance(node, AIPredict):
+            return self._emit_ai_predict(node)
+        if isinstance(node, AIEnrich):
+            return self._emit_ai_enrich(node)
+        if isinstance(node, AIScore):
+            return self._emit_ai_score(node)
+        # Data operations
+        if isinstance(node, FetchExpression):
+            return self._emit_fetch(node)
+        if isinstance(node, ReadExpression):
+            return self._emit_read(node)
+        if isinstance(node, QueryExpression):
+            return self._emit_query(node)
+        if isinstance(node, MergeExpression):
+            return self._emit_merge(node)
 
         raise TranspileError(
             f"Unsupported expression type: {type(node).__name__}",
@@ -365,3 +403,86 @@ class Transpiler:
             self.indent_level -= 1
 
         return lines
+
+    # -- AI Primitive emission -----------------------------------------------
+
+    def _emit_ai_ask(self, node: AIAsk) -> str:
+        """Emit ``drift_runtime.ai.ask(...)``."""
+        args = [self._emit_expr(node.prompt)]
+        if node.schema:
+            args.append(f"schema={node.schema}")
+        if node.using:
+            context_items = []
+            for key, val in node.using.items():
+                context_items.append(f'"{key}": {self._emit_expr(val)}')
+            args.append(f'context={{{", ".join(context_items)}}}')
+        return f'drift_runtime.ai.ask({", ".join(args)})'
+
+    def _emit_ai_classify(self, node: AIClassify) -> str:
+        """Emit ``drift_runtime.ai.classify(...)``."""
+        input_str = self._emit_expr(node.input)
+        cats = ", ".join(self._emit_expr(c) for c in node.categories)
+        return f"drift_runtime.ai.classify({input_str}, categories=[{cats}])"
+
+    def _emit_ai_embed(self, node: AIEmbed) -> str:
+        """Emit ``drift_runtime.ai.embed(...)``."""
+        return f"drift_runtime.ai.embed({self._emit_expr(node.input)})"
+
+    def _emit_ai_see(self, node: AISee) -> str:
+        """Emit ``drift_runtime.ai.see(...)``."""
+        input_str = self._emit_expr(node.input)
+        prompt_str = self._emit_expr(node.prompt)
+        return f"drift_runtime.ai.see({input_str}, {prompt_str})"
+
+    def _emit_ai_predict(self, node: AIPredict) -> str:
+        """Emit ``drift_runtime.ai.predict(...)``."""
+        args = [self._emit_expr(node.prompt)]
+        if node.schema:
+            args.append(f'schema="{node.schema}"')
+        return f'drift_runtime.ai.predict({", ".join(args)})'
+
+    def _emit_ai_enrich(self, node: AIEnrich) -> str:
+        """Emit ``drift_runtime.ai.enrich(...)``."""
+        return f"drift_runtime.ai.enrich({self._emit_expr(node.prompt)})"
+
+    def _emit_ai_score(self, node: AIScore) -> str:
+        """Emit ``drift_runtime.ai.score(...)``."""
+        args = [self._emit_expr(node.prompt)]
+        if node.schema:
+            args.append(f'schema="{node.schema}"')
+        return f'drift_runtime.ai.score({", ".join(args)})'
+
+    # -- Data Operation emission ---------------------------------------------
+
+    def _emit_fetch(self, node: FetchExpression) -> str:
+        """Emit ``drift_runtime.fetch(...)``."""
+        args = [self._emit_expr(node.url)]
+        if node.options:
+            if isinstance(node.options, MapLiteral):
+                for key, val in node.options.pairs:
+                    args.append(f"{key}={self._emit_expr(val)}")
+            elif isinstance(node.options, dict):
+                for key, val in node.options.items():
+                    args.append(f"{key}={self._emit_expr(val)}")
+        return f'drift_runtime.fetch({", ".join(args)})'
+
+    def _emit_read(self, node: ReadExpression) -> str:
+        """Emit ``drift_runtime.read(...)``."""
+        return f"drift_runtime.read({self._emit_expr(node.path)})"
+
+    def _emit_save(self, node: SaveStatement) -> list[str]:
+        """Emit ``drift_runtime.save(data, path)``."""
+        data = self._emit_expr(node.data)
+        path = self._emit_expr(node.path)
+        return [f"{self._indent()}drift_runtime.save({data}, {path})"]
+
+    def _emit_query(self, node: QueryExpression) -> str:
+        """Emit ``drift_runtime.query(...)``."""
+        sql = self._emit_expr(node.sql)
+        source = self._emit_expr(node.source)
+        return f"drift_runtime.query({sql}, {source})"
+
+    def _emit_merge(self, node: MergeExpression) -> str:
+        """Emit ``drift_runtime.merge([...])``."""
+        sources = ", ".join(self._emit_expr(s) for s in node.sources)
+        return f"drift_runtime.merge([{sources}])"
