@@ -1,0 +1,28 @@
+-- Personal Budget Categorizer
+-- Reads transactions and uses AI to categorize spending
+
+transactions = read "examples/transactions.csv"
+
+categorized = transactions
+  |> ai.enrich("Categorize each transaction into exactly one of: Food & Dining, Transportation, Shopping, Entertainment, Health & Fitness, Utilities, Subscriptions. Add a 'category' field.")
+
+print "================================"
+print "  BUDGET ANALYZER"
+print "================================"
+print ""
+
+for each t in categorized:
+  print "{t.description}: ${t.amount} -> [{t.category}]"
+
+print ""
+print "--------------------------------"
+
+summary = ai.ask("Analyze these categorized transactions and provide: 1) Total spending 2) Spending by category with percentages 3) The single biggest expense 4) One specific suggestion to save money. Be concise and use actual numbers from the data.") using {
+  transactions: categorized
+}
+
+print summary
+
+save categorized to "budget_categorized.json"
+print ""
+print "Detailed breakdown saved to budget_categorized.json"
