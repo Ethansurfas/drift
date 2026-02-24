@@ -1,0 +1,41 @@
+-- Website Content Summarizer
+-- Give it a URL, get a smart summary
+
+schema PageSummary:
+  title: string
+  summary: string
+  key_points: list of string
+  word_count: number
+  reading_time: string
+  tone: string
+
+url = "https://paulgraham.com/writes.html"
+
+print "Fetching: {url}"
+print ""
+
+content = fetch url
+
+analysis = ai.ask("Analyze this web page content. Provide a clear summary, 3-5 key points, estimate the word count, calculate reading time, and describe the overall tone.") -> PageSummary using {
+  page_content: content
+}
+
+print "================================"
+print "  PAGE SUMMARY"
+print "================================"
+print ""
+print "Title:        {analysis.title}"
+print "Reading Time: {analysis.reading_time}"
+print "Tone:         {analysis.tone}"
+print "Word Count:   ~{analysis.word_count}"
+print ""
+print "SUMMARY:"
+print "{analysis.summary}"
+print ""
+print "KEY POINTS:"
+for each point in analysis.key_points:
+  print "  - {point}"
+
+save analysis to "page_summary.json"
+print ""
+print "Full analysis saved to page_summary.json"
