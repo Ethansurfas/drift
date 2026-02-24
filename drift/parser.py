@@ -51,6 +51,8 @@ from drift.ast_nodes import (
     DeduplicateStage,
     TransformStage,
     EachStage,
+    TryCatch,
+    CatchClause,
 )
 
 
@@ -154,6 +156,8 @@ class Parser:
             return self.parse_return()
         if self.current().type == TokenType.SAVE:
             return self.parse_save()
+        if self.current().type == TokenType.TRY:
+            return self.parse_try()
 
         if self.current().type == TokenType.IDENTIFIER:
             # Check for assignment: IDENTIFIER EQUALS ...
@@ -442,6 +446,45 @@ class Parser:
         self.expect(TokenType.TO)
         path = self.parse_expression()
         return SaveStatement(data=data, path=path, line=tok.line, col=tok.column)
+
+    def parse_try(self):
+        """Parse a try/catch statement.
+
+        ::
+
+            try:
+              <body>
+            catch <error_type>:
+              <body>
+            [catch <error_type>:
+              <body> ...]
+        """
+        tok = self.expect(TokenType.TRY)
+        self.expect(TokenType.COLON)
+        try_body = self.parse_block()
+
+        catches: list[CatchClause] = []
+        while True:
+            self.skip_newlines()
+            if self.current().type != TokenType.CATCH:
+                break
+            self.advance()  # consume CATCH
+            error_tok = self.expect(TokenType.IDENTIFIER)
+            self.expect(TokenType.COLON)
+            catch_body = self.parse_block()
+            catches.append(CatchClause(
+                error_type=error_tok.value,
+                body=catch_body,
+                line=error_tok.line,
+                col=error_tok.column,
+            ))
+
+        return TryCatch(
+            try_body=try_body,
+            catches=catches,
+            line=tok.line,
+            col=tok.column,
+        )
 
     # -- Expression parsing (recursive descent by precedence) --------------
 

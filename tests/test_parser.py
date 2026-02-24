@@ -49,6 +49,8 @@ from drift.ast_nodes import (
     DeduplicateStage,
     TransformStage,
     EachStage,
+    TryCatch,
+    CatchClause,
 )
 from drift.errors import ParseError
 
@@ -929,3 +931,33 @@ class TestPipelines:
         pipe = prog.body[0].value
         assert isinstance(pipe.stages[0], TransformStage)
         assert pipe.stages[0].variable == "item"
+
+
+# ---------------------------------------------------------------------------
+# Try / Catch
+# ---------------------------------------------------------------------------
+
+class TestTryCatch:
+    def test_try_catch_simple(self):
+        src = 'try:\n  x = 1\ncatch network_error:\n  log "failed"'
+        prog = parse(src)
+        tc = prog.body[0]
+        assert isinstance(tc, TryCatch)
+        assert len(tc.try_body) == 1
+        assert len(tc.catches) == 1
+        assert tc.catches[0].error_type == "network_error"
+
+    def test_try_multiple_catches(self):
+        src = 'try:\n  x = 1\ncatch network_error:\n  log "net"\ncatch ai_error:\n  log "ai"'
+        prog = parse(src)
+        tc = prog.body[0]
+        assert len(tc.catches) == 2
+        assert tc.catches[0].error_type == "network_error"
+        assert tc.catches[1].error_type == "ai_error"
+
+    def test_try_catch_then_code(self):
+        src = 'try:\n  x = 1\ncatch err:\n  log "fail"\nprint "done"'
+        prog = parse(src)
+        assert len(prog.body) == 2
+        assert isinstance(prog.body[0], TryCatch)
+        assert isinstance(prog.body[1], PrintStatement)
