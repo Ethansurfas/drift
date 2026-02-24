@@ -1,26 +1,67 @@
--- Deal Analyzer
+-- Real Estate Deal Analyzer
+-- Analyze a property using comparable sales and AI
+
 schema DealScore:
   address: string
-  arv: number
-  rehab_cost: number
-  roi: number
+  estimated_arv: number
+  repair_estimate: number
+  max_offer: number
+  roi_percent: number
+  risk_level: string
   verdict: string
+  reasoning: string
 
-address = "742 Evergreen Terrace, Springfield"
+-- Target property
+address = "742 Evergreen Terrace"
+asking_price = 250000
+sqft = 1450
+beds = 3
+baths = 2
+condition = "Needs kitchen and bathroom renovation"
 
-comps = fetch "https://api.rentcast.io/v1/comps" with {
-  headers: { "X-Api-Key": env.RENTCAST_KEY }
-  params: { address: address, radius: 0.5 }
+target = {
+  address: address,
+  asking_price: asking_price,
+  sqft: sqft,
+  beds: beds,
+  baths: baths,
+  condition: condition
 }
 
-score = ai.ask("Analyze this investment property") -> DealScore using {
-  address: address
-  purchase_price: 285000
+-- Load comparable sales
+comps = read "examples/sample_comps.json"
+
+print "================================"
+print "  DEAL ANALYZER"
+print "================================"
+print ""
+print "Target: {address}"
+print "Asking: ${asking_price}"
+print "Condition: {condition}"
+print ""
+print "Analyzing comparable sales..."
+print ""
+
+-- Run AI analysis
+score = ai.ask("You are an experienced real estate investor. Analyze this potential flip deal. The target property details and comparable recent sales are provided. Calculate: 1) Estimated After-Repair Value (ARV) based on comps 2) Estimated repair costs given the condition 3) Maximum offer price using the 70% rule (MAO = ARV * 0.70 - repairs) 4) Expected ROI if purchased at asking price 5) Risk level (low/medium/high) 6) Clear verdict (strong buy / buy / pass / hard pass) 7) Brief reasoning. Use the actual numbers from the comps to justify your ARV estimate.") -> DealScore using {
+  target_property: target,
   comparable_sales: comps
 }
 
-if score.roi > 15:
-  print "Hot deal: {score.verdict}"
-  save score to "deals/result.json"
-else:
-  print "Pass: {score.verdict}"
+print "RESULTS:"
+print "--------------------------------"
+print "Estimated ARV:     ${score.estimated_arv}"
+print "Repair Estimate:   ${score.repair_estimate}"
+print "Max Offer (70%):   ${score.max_offer}"
+print "Expected ROI:      {score.roi_percent}%"
+print "Risk Level:        {score.risk_level}"
+print ""
+print "VERDICT: {score.verdict}"
+print ""
+print "REASONING:"
+print "{score.reasoning}"
+print "--------------------------------"
+
+save score to "deal_score.json"
+print ""
+print "Full analysis saved to deal_score.json"
