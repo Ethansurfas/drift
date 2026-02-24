@@ -35,6 +35,11 @@ from drift.ast_nodes import (
     AIPredict,
     AIEnrich,
     AIScore,
+    FetchExpression,
+    ReadExpression,
+    SaveStatement,
+    QueryExpression,
+    MergeExpression,
 )
 from drift.errors import ParseError
 
@@ -727,3 +732,60 @@ class TestAIPrimitives:
         src = 'x = ai.score("Rate 1-100") -> number'
         prog = parse(src)
         assert isinstance(prog.body[0].value, AIScore)
+
+
+# ---------------------------------------------------------------------------
+# Data Operations — fetch, read, save, query, merge
+# ---------------------------------------------------------------------------
+
+class TestDataOperations:
+    def test_fetch_simple(self):
+        src = 'data = fetch "https://api.example.com/data"'
+        prog = parse(src)
+        assert isinstance(prog.body[0].value, FetchExpression)
+        assert isinstance(prog.body[0].value.url, StringLiteral)
+
+    def test_fetch_variable(self):
+        src = 'data = fetch api_url'
+        prog = parse(src)
+        assert isinstance(prog.body[0].value, FetchExpression)
+        assert isinstance(prog.body[0].value.url, Identifier)
+
+    def test_fetch_with_options(self):
+        src = 'data = fetch "https://api.example.com" with {\n  headers: { "X-Key": "abc" }\n  params: { limit: 50 }\n}'
+        prog = parse(src)
+        fetch = prog.body[0].value
+        assert isinstance(fetch, FetchExpression)
+        assert fetch.options is not None
+
+    def test_read_file(self):
+        src = 'data = read "deals.csv"'
+        prog = parse(src)
+        assert isinstance(prog.body[0].value, ReadExpression)
+
+    def test_save_statement(self):
+        src = 'save data to "output.json"'
+        prog = parse(src)
+        assert isinstance(prog.body[0], SaveStatement)
+        assert isinstance(prog.body[0].data, Identifier)
+        assert isinstance(prog.body[0].path, StringLiteral)
+
+    def test_query_expression(self):
+        src = 'records = query "SELECT * FROM users" on db.main'
+        prog = parse(src)
+        q = prog.body[0].value
+        assert isinstance(q, QueryExpression)
+        assert isinstance(q.sql, StringLiteral)
+        assert isinstance(q.source, DotAccess)
+
+    def test_merge_expression(self):
+        src = "combined = merge [source_a, source_b]"
+        prog = parse(src)
+        m = prog.body[0].value
+        assert isinstance(m, MergeExpression)
+        assert len(m.sources) == 2
+
+    def test_fetch_then_code(self):
+        src = 'data = fetch "http://example.com"\nprint data'
+        prog = parse(src)
+        assert len(prog.body) == 2

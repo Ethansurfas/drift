@@ -37,6 +37,11 @@ from drift.ast_nodes import (
     AIPredict,
     AIEnrich,
     AIScore,
+    FetchExpression,
+    ReadExpression,
+    SaveStatement,
+    QueryExpression,
+    MergeExpression,
 )
 
 
@@ -138,6 +143,8 @@ class Parser:
             return self.parse_function_def()
         if self.current().type == TokenType.RETURN:
             return self.parse_return()
+        if self.current().type == TokenType.SAVE:
+            return self.parse_save()
 
         if self.current().type == TokenType.IDENTIFIER:
             # Check for assignment: IDENTIFIER EQUALS ...
@@ -417,6 +424,14 @@ class Parser:
         value = self.parse_expression()
         return ReturnStatement(value=value, line=tok.line, col=tok.column)
 
+    def parse_save(self):
+        """Parse a save statement: ``save <expr> to <expr>``."""
+        tok = self.expect(TokenType.SAVE)
+        data = self.parse_expression()
+        self.expect(TokenType.TO)
+        path = self.parse_expression()
+        return SaveStatement(data=data, path=path, line=tok.line, col=tok.column)
+
     # -- Expression parsing (recursive descent by precedence) --------------
 
     def parse_expression(self):
@@ -688,7 +703,11 @@ class Parser:
             self._skip_whitespace_tokens()
             if self.current().type == TokenType.RBRACE:
                 break
-            key_tok = self.expect(TokenType.IDENTIFIER)
+            # Accept IDENTIFIER or STRING as map key
+            if self.current().type == TokenType.STRING:
+                key_tok = self.advance()
+            else:
+                key_tok = self.expect(TokenType.IDENTIFIER)
             self.expect(TokenType.COLON)
             value = self.parse_expression()
             pairs[key_tok.value] = value
@@ -761,6 +780,22 @@ class Parser:
         if tok.type == TokenType.LBRACE:
             return self._parse_map_literal()
 
+        # Fetch expression: fetch <expr> [with { ... }]
+        if tok.type == TokenType.FETCH:
+            return self._parse_fetch()
+
+        # Read expression: read <expr>
+        if tok.type == TokenType.READ:
+            return self._parse_read()
+
+        # Query expression: query <expr> on <expr>
+        if tok.type == TokenType.QUERY:
+            return self._parse_query()
+
+        # Merge expression: merge [<expr>, ...]
+        if tok.type == TokenType.MERGE:
+            return self._parse_merge()
+
         raise ParseError(
             f"Unexpected token {tok.type.name} ({tok.value!r})",
             tok.line,
@@ -780,25 +815,66 @@ class Parser:
         self.expect(TokenType.RBRACKET)
         return ListLiteral(elements=elements, line=tok.line, col=tok.column)
 
+    def _parse_map_key(self) -> Token:
+        """Parse a map key — accepts IDENTIFIER or STRING tokens."""
+        if self.current().type == TokenType.STRING:
+            return self.advance()
+        return self.expect(TokenType.IDENTIFIER)
+
     def _parse_map_literal(self):
         """Parse ``{ key: value, key: value, ... }``."""
         tok = self.expect(TokenType.LBRACE)
         pairs: list[tuple[str, object]] = []
 
         if self.current().type != TokenType.RBRACE:
-            key_tok = self.expect(TokenType.IDENTIFIER)
+            key_tok = self._parse_map_key()
             self.expect(TokenType.COLON)
             value = self.parse_expression()
             pairs.append((key_tok.value, value))
 
             while self.match(TokenType.COMMA):
-                key_tok = self.expect(TokenType.IDENTIFIER)
+                key_tok = self._parse_map_key()
                 self.expect(TokenType.COLON)
                 value = self.parse_expression()
                 pairs.append((key_tok.value, value))
 
         self.expect(TokenType.RBRACE)
         return MapLiteral(pairs=pairs, line=tok.line, col=tok.column)
+
+    # -- Data operation parsing --------------------------------------------
+
+    def _parse_fetch(self):
+        """Parse ``fetch <expr> [with { key: value, ... }]``."""
+        tok = self.advance()  # consume FETCH
+        url = self.parse_expression()
+
+        # Optional: with { ... }
+        options = None
+        if self.current().type == TokenType.WITH:
+            self.advance()  # consume WITH
+            options = self._parse_using_map()
+
+        return FetchExpression(url=url, options=options, line=tok.line, col=tok.column)
+
+    def _parse_read(self):
+        """Parse ``read <expr>``."""
+        tok = self.advance()  # consume READ
+        path = self.parse_expression()
+        return ReadExpression(path=path, line=tok.line, col=tok.column)
+
+    def _parse_query(self):
+        """Parse ``query <expr> on <expr>``."""
+        tok = self.advance()  # consume QUERY
+        sql = self.parse_expression()
+        self.expect(TokenType.ON)
+        source = self.parse_expression()
+        return QueryExpression(sql=sql, source=source, line=tok.line, col=tok.column)
+
+    def _parse_merge(self):
+        """Parse ``merge [<expr>, ...]``."""
+        tok = self.advance()  # consume MERGE
+        list_node = self._parse_list_literal()
+        return MergeExpression(sources=list_node.elements, line=tok.line, col=tok.column)
 
     # -- String interpolation ----------------------------------------------
 
