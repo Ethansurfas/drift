@@ -424,13 +424,30 @@ class Lexer:
         non-blank, non-comment line and emit INDENT/DEDENT as needed.
         Consecutive NEWLINEs (blank lines) are collapsed into one.
         Before EOF, emit DEDENTs for any remaining open indent levels.
+
+        Inside brackets (``[]``, ``{}``, ``()``) NEWLINE/INDENT/DEDENT
+        are suppressed — implicit line continuation, same as Python.
         """
         indent_stack: list[int] = [0]
         result: list[Token] = []
         i = 0
+        bracket_depth = 0
+        _OPEN = {TokenType.LBRACKET, TokenType.LBRACE, TokenType.LPAREN}
+        _CLOSE = {TokenType.RBRACKET, TokenType.RBRACE, TokenType.RPAREN}
 
         while i < len(raw):
             tok = raw[i]
+
+            # Track bracket depth
+            if tok.type in _OPEN:
+                bracket_depth += 1
+            elif tok.type in _CLOSE:
+                bracket_depth -= 1
+
+            # Inside brackets: skip NEWLINE tokens entirely
+            if bracket_depth > 0 and tok.type == TokenType.NEWLINE:
+                i += 1
+                continue
 
             if tok.type == TokenType.NEWLINE:
                 # Emit the NEWLINE
