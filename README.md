@@ -219,6 +219,59 @@ Drift programs transpile to Python:
 | `\|> sort by x desc` | `sorted(...)` |
 | `catch network_error:` | `except DriftNetworkError:` |
 
+## Examples
+
+Four real-world programs that show what Drift can do. All require `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`).
+
+### Deal Analyzer — *the flagship*
+
+Analyzes a real estate flip using comparable sales and the 70% rule.
+
+```bash
+drift run examples/deal_analyzer.drift
+```
+
+```drift
+comps = read "examples/sample_comps.json"
+
+score = ai.ask("Analyze this potential flip deal...") -> DealScore using {
+  target_property: target,
+  comparable_sales: comps
+}
+
+print "Estimated ARV:   ${score.estimated_arv}"
+print "VERDICT: {score.verdict}"
+```
+
+### Budget Categorizer
+
+Reads a CSV of transactions, AI-categorizes spending, and summarizes your budget.
+
+```bash
+drift run examples/budget.drift
+```
+
+### Web Page Summarizer
+
+Fetches any URL and produces a structured summary with key points, reading time, and tone.
+
+```bash
+drift run examples/summarizer.drift
+```
+
+### News Analyzer
+
+Classifies headlines by sentiment and topic. Two versions:
+
+```bash
+# Works out of the box (no extra API key)
+drift run examples/news_analyzer_offline.drift
+
+# Live headlines (requires free newsdata.io key)
+export NEWSDATA_KEY=your-key
+drift run examples/news_analyzer.drift
+```
+
 ## Project Structure
 
 ```
@@ -226,7 +279,7 @@ drift/
 ├── drift/              # Compiler (lexer, parser, transpiler, CLI)
 ├── drift_runtime/      # Runtime (AI, data I/O, config, pipeline helpers)
 ├── tests/              # 447+ tests
-├── examples/           # hello.drift, pipeline.drift, deal_analyzer.drift
+├── examples/           # deal_analyzer, budget, summarizer, news_analyzer
 └── docs/plans/         # Design documents
 ```
 
