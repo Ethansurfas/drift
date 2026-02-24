@@ -1,0 +1,3 @@
+-- Hello World in Drift
+name = "Drift"
+print "Hello from {name}!"

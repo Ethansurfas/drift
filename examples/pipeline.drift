@@ -1,0 +1,17 @@
+-- Pipeline example
+schema Lead:
+  name: string
+  email: string
+  score: number
+
+data = fetch "https://crm.example.com/leads" with {
+  headers: { "Authorization": "Bearer token123" }
+}
+
+qualified = data
+  |> filter where score > 60
+  |> sort by score descending
+  |> take 20
+  |> save to "qualified.csv"
+
+print "Done"

@@ -1,0 +1,26 @@
+-- Deal Analyzer
+schema DealScore:
+  address: string
+  arv: number
+  rehab_cost: number
+  roi: number
+  verdict: string
+
+address = "742 Evergreen Terrace, Springfield"
+
+comps = fetch "https://api.rentcast.io/v1/comps" with {
+  headers: { "X-Api-Key": env.RENTCAST_KEY }
+  params: { address: address, radius: 0.5 }
+}
+
+score = ai.ask("Analyze this investment property") -> DealScore using {
+  address: address
+  purchase_price: 285000
+  comparable_sales: comps
+}
+
+if score.roi > 15:
+  print "Hot deal: {score.verdict}"
+  save score to "deals/result.json"
+else:
+  print "Pass: {score.verdict}"
