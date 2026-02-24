@@ -45,8 +45,6 @@ def main():
                 sys.exit(0)
 
             if command == "run":
-                # Note: drift_runtime doesn't exist yet (Phase 3)
-                # This will fail on import but the transpilation works
                 exec(python_code, {"__name__": "__main__"})
 
         except DriftError as e:

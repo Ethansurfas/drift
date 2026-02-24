@@ -124,7 +124,7 @@ drift/
 │   ├── transpiler.py # AST → Python code generator
 │   ├── cli.py       # drift check/build/run
 │   └── errors.py    # LexerError, ParseError, TranspileError
-├── tests/           # 354 tests
+├── tests/           # 447+ tests
 ├── examples/        # hello.drift, pipeline.drift, deal_analyzer.drift
 └── docs/plans/      # Design docs
 ```
@@ -134,7 +134,7 @@ drift/
 ```bash
 python3 -m drift.cli check file.drift   # Validate syntax
 python3 -m drift.cli build file.drift   # Transpile to .py
-python3 -m drift.cli run file.drift     # Transpile + execute (needs drift_runtime)
+python3 -m drift.cli run file.drift     # Transpile + execute
 ```
 
 ## Running Tests
@@ -179,7 +179,7 @@ drift/
 │   ├── types.py        # ConfidentValue, schema_to_json_description, parse_ai_response_to_schema
 │   ├── pipeline.py     # deduplicate, group_by helpers
 │   └── exceptions.py   # DriftRuntimeError, DriftAIError, DriftNetworkError, DriftFileError, DriftConfigError
-├── tests/              # 354+ tests
+├── tests/              # 447+ tests
 ├── examples/           # hello.drift, pipeline.drift, deal_analyzer.drift
 ├── docs/plans/         # Design docs
 ├── DRIFT_LANGUAGE_SPEC.md
@@ -188,8 +188,8 @@ drift/
 
 ## Current Status
 
-- **Phase 1 complete:** Lexer, parser, transpiler, CLI, 354 tests
-- **Phase 2 next:** `drift_runtime` package (see `DRIFT_PHASE2_RUNTIME_SPEC.md`)
+- **Phase 1 complete:** Lexer, parser, transpiler, CLI
+- **Phase 2 complete:** `drift_runtime` package — AI (Anthropic + OpenAI), data I/O, config, pipeline helpers, 447+ tests
 - **Deferred:** Agent syntax (v2), retry/fallback error handling, REPL, VS Code extension
 
 ## Phase 2 Warnings (READ THESE BEFORE IMPLEMENTING)
