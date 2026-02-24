@@ -13,6 +13,7 @@ from drift_runtime.types import (
     ConfidentValue,
     schema_to_json_description,
     parse_ai_response_to_schema,
+    _to_drift_dict,
 )
 from drift_runtime.exceptions import DriftAIError
 
@@ -216,14 +217,14 @@ class DriftAI:
                 if isinstance(item, dict):
                     merged = dict(item)
                     merged.update(enrichment)
-                    result.append(merged)
+                    result.append(_to_drift_dict(merged))
                 else:
                     result.append(item)
             except json.JSONDecodeError:
                 if isinstance(item, dict):
                     merged = dict(item)
                     merged["enrichment"] = response
-                    result.append(merged)
+                    result.append(_to_drift_dict(merged))
                 else:
                     result.append(item)
 
@@ -248,7 +249,7 @@ class DriftAI:
             if isinstance(item, dict):
                 scored = dict(item)
                 scored["score"] = score_val
-                result.append(scored)
+                result.append(_to_drift_dict(scored))
             else:
                 result.append(item)
 

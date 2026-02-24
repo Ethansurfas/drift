@@ -147,3 +147,61 @@ def test_query_sqlite():
         assert result[1]["age"] == 25
     finally:
         os.unlink(db_path)
+
+
+# --- DriftDict integration tests ---
+
+def test_read_csv_returns_drift_dicts():
+    from drift_runtime.data import read
+    from drift_runtime.types import DriftDict
+    with tempfile.NamedTemporaryFile(suffix=".csv", mode="w", delete=False) as f:
+        f.write("name,age\nAlice,30\n")
+        path = f.name
+    try:
+        result = read(path)
+        assert isinstance(result[0], DriftDict)
+        assert result[0].name == "Alice"  # Dot access works!
+    finally:
+        os.unlink(path)
+
+
+def test_read_json_returns_drift_dicts():
+    from drift_runtime.data import read
+    from drift_runtime.types import DriftDict
+    with tempfile.NamedTemporaryFile(suffix=".json", mode="w", delete=False) as f:
+        json.dump([{"name": "Alice"}], f)
+        path = f.name
+    try:
+        result = read(path)
+        assert isinstance(result[0], DriftDict)
+        assert result[0].name == "Alice"
+    finally:
+        os.unlink(path)
+
+
+def test_query_returns_drift_dicts():
+    from drift_runtime.data import query
+    from drift_runtime.types import DriftDict
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE items (name TEXT)")
+        conn.execute("INSERT INTO items VALUES ('test')")
+        conn.commit()
+        conn.close()
+        result = query("SELECT * FROM items", db_path)
+        assert isinstance(result[0], DriftDict)
+        assert result[0].name == "test"
+    finally:
+        os.unlink(db_path)
+
+
+def test_merge_returns_drift_dicts():
+    from drift_runtime.data import merge
+    from drift_runtime.types import DriftDict
+    a = [{"id": 1}]
+    b = [{"id": 2}]
+    result = merge([a, b])
+    assert isinstance(result[0], DriftDict)
+    assert result[0].id == 1

@@ -1,5 +1,6 @@
 """Drift runtime types.
 
+DriftDict — dict subclass with attribute access for Drift dot notation.
 ConfidentValue — wraps a value + confidence score, supports numeric comparisons.
 schema_to_json_description — introspects dataclass fields for AI prompting.
 parse_ai_response_to_schema — parses AI JSON responses (handles code fences).
@@ -7,6 +8,28 @@ parse_ai_response_to_schema — parses AI JSON responses (handles code fences).
 
 import dataclasses
 import json
+
+
+class DriftDict(dict):
+    """A dict that supports attribute access for Drift dot notation."""
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(f"No field '{name}'")
+
+    def __setattr__(self, name, value):
+        self[name] = value
+
+
+def _to_drift_dict(obj):
+    """Recursively convert dicts to DriftDict and process lists."""
+    if isinstance(obj, dict):
+        return DriftDict({k: _to_drift_dict(v) for k, v in obj.items()})
+    elif isinstance(obj, list):
+        return [_to_drift_dict(item) for item in obj]
+    return obj
 
 
 @dataclasses.dataclass

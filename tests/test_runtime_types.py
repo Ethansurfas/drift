@@ -4,6 +4,8 @@ import pytest
 from dataclasses import dataclass
 from drift_runtime.types import (
     ConfidentValue,
+    DriftDict,
+    _to_drift_dict,
     schema_to_json_description,
     parse_ai_response_to_schema,
 )
@@ -126,3 +128,44 @@ def test_parse_json_extra_fields_ignored():
         name: str
     result = parse_ai_response_to_schema('{"name": "test", "extra": 99}', Score)
     assert result.name == "test"
+
+
+# --- DriftDict tests ---
+
+def test_drift_dict_dot_access():
+    d = DriftDict({"name": "Alice", "age": 30})
+    assert d.name == "Alice"
+    assert d.age == 30
+    assert d["name"] == "Alice"  # Still works as regular dict
+
+
+def test_drift_dict_missing_key_raises_attribute_error():
+    d = DriftDict({"name": "Alice"})
+    with pytest.raises(AttributeError):
+        _ = d.missing_field
+
+
+def test_drift_dict_set_attr():
+    d = DriftDict({})
+    d.name = "Bob"
+    assert d["name"] == "Bob"
+    assert d.name == "Bob"
+
+
+def test_to_drift_dict_recursive():
+    data = {"user": {"name": "Alice", "scores": [{"value": 95}]}}
+    result = _to_drift_dict(data)
+    assert result.user.name == "Alice"
+    assert result.user.scores[0].value == 95
+
+
+def test_drift_dict_is_dict():
+    d = DriftDict({"a": 1})
+    assert isinstance(d, dict)
+    assert d == {"a": 1}
+
+
+def test_to_drift_dict_passthrough_non_dict():
+    assert _to_drift_dict(42) == 42
+    assert _to_drift_dict("hello") == "hello"
+    assert _to_drift_dict(None) is None

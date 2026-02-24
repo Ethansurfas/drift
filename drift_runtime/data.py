@@ -9,6 +9,7 @@ import dataclasses
 import httpx
 
 from drift_runtime.exceptions import DriftNetworkError, DriftFileError
+from drift_runtime.types import _to_drift_dict
 
 
 def read(path: str):
@@ -20,11 +21,11 @@ def read(path: str):
 
     if ext == ".json":
         with open(path) as f:
-            return json.load(f)
+            return _to_drift_dict(json.load(f))
     elif ext == ".csv":
         with open(path, newline="") as f:
             reader = csv.DictReader(f)
-            return list(reader)
+            return [_to_drift_dict(row) for row in reader]
     else:
         with open(path) as f:
             return f.read()
@@ -63,7 +64,7 @@ def merge(sources: list) -> list:
     result = []
     for s in sources:
         result.extend(s)
-    return result
+    return [_to_drift_dict(item) if isinstance(item, dict) else item for item in result]
 
 
 def query(sql: str, source: str) -> list:
@@ -71,7 +72,7 @@ def query(sql: str, source: str) -> list:
     conn = sqlite3.connect(source)
     conn.row_factory = sqlite3.Row
     cursor = conn.execute(sql)
-    rows = [dict(row) for row in cursor.fetchall()]
+    rows = [_to_drift_dict(dict(row)) for row in cursor.fetchall()]
     conn.close()
     return rows
 
@@ -88,5 +89,5 @@ def fetch(url: str, headers: dict = None, params: dict = None):
 
     content_type = response.headers.get("content-type", "")
     if "application/json" in content_type:
-        return response.json()
+        return _to_drift_dict(response.json())
     return response.text
