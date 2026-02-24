@@ -371,3 +371,95 @@ def test_merge_expression():
     code = transpile(src)
     assert "drift_runtime.merge" in code
     python_ast.parse(code)
+
+
+# ── Pipelines ───────────────────────────────────────────────────────────────
+
+
+def test_pipeline_filter():
+    src = 'results = data\n  |> filter where price < 500000'
+    code = transpile(src)
+    assert "_pipe" in code or "results" in code
+    assert "500000" in code
+    python_ast.parse(code)
+
+
+def test_pipeline_sort_ascending():
+    src = "results = data\n  |> sort by price ascending"
+    code = transpile(src)
+    assert "sorted" in code
+    python_ast.parse(code)
+
+
+def test_pipeline_sort_descending():
+    src = "results = data\n  |> sort by score descending"
+    code = transpile(src)
+    assert "reverse=True" in code
+    python_ast.parse(code)
+
+
+def test_pipeline_take():
+    src = "results = data\n  |> take 10"
+    code = transpile(src)
+    assert "[:10]" in code
+    python_ast.parse(code)
+
+
+def test_pipeline_skip():
+    src = "results = data\n  |> skip 5"
+    code = transpile(src)
+    assert "[5:]" in code
+    python_ast.parse(code)
+
+
+def test_pipeline_chain():
+    src = 'results = data\n  |> filter where x > 5\n  |> sort by x descending\n  |> take 10'
+    code = transpile(src)
+    python_ast.parse(code)
+    assert "results = _pipe" in code or "results" in code
+
+
+def test_pipeline_deduplicate():
+    src = "results = data\n  |> deduplicate by address"
+    code = transpile(src)
+    python_ast.parse(code)
+
+
+def test_pipeline_group():
+    src = "results = data\n  |> group by city"
+    code = transpile(src)
+    python_ast.parse(code)
+
+
+def test_pipeline_ai_enrich():
+    src = 'results = data\n  |> ai.enrich("Add summary")'
+    code = transpile(src)
+    assert "drift_runtime.ai.enrich" in code
+    python_ast.parse(code)
+
+
+def test_pipeline_ai_score():
+    src = 'results = data\n  |> ai.score("Rate 1-100") -> number'
+    code = transpile(src)
+    assert "drift_runtime.ai.score" in code
+    python_ast.parse(code)
+
+
+def test_pipeline_each():
+    src = 'results = data\n  |> each { |item|\n    print item\n  }'
+    code = transpile(src)
+    assert "for item in" in code
+    python_ast.parse(code)
+
+
+def test_pipeline_save():
+    src = 'results = data\n  |> filter where x > 5\n  |> save to "out.csv"'
+    code = transpile(src)
+    assert "drift_runtime.save" in code
+    python_ast.parse(code)
+
+
+def test_pipeline_filter_with_and():
+    src = 'results = data\n  |> filter where price < 500000 and beds >= 3'
+    code = transpile(src)
+    python_ast.parse(code)

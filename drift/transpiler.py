@@ -37,6 +37,15 @@ from drift.ast_nodes import (
     SaveStatement,
     QueryExpression,
     MergeExpression,
+    Pipeline,
+    FilterStage,
+    SortStage,
+    TakeStage,
+    SkipStage,
+    GroupStage,
+    DeduplicateStage,
+    TransformStage,
+    EachStage,
 )
 from drift.errors import TranspileError
 
@@ -98,6 +107,8 @@ class Transpiler:
             return self._emit_try_catch(node)
         if isinstance(node, SaveStatement):
             return self._emit_save(node)
+        if isinstance(node, Pipeline):
+            return self._emit_pipeline(node, target=None)
 
         raise TranspileError(
             f"Unsupported statement type: {type(node).__name__}",
@@ -107,6 +118,8 @@ class Transpiler:
 
     def _emit_assignment(self, node: Assignment) -> list[str]:
         """Emit ``target = value``."""
+        if isinstance(node.value, Pipeline):
+            return self._emit_pipeline(node.value, target=node.target)
         value = self._emit_expr(node.value)
         return [f"{self._indent()}{node.target} = {value}"]
 
@@ -486,3 +499,115 @@ class Transpiler:
         """Emit ``drift_runtime.merge([...])``."""
         sources = ", ".join(self._emit_expr(s) for s in node.sources)
         return f"drift_runtime.merge([{sources}])"
+
+    # -- Pipeline emission ---------------------------------------------------
+
+    def _emit_pipeline(self, node: Pipeline, target: str | None) -> list[str]:
+        """Emit a pipeline as a series of ``_pipe`` reassignments.
+
+        If *target* is set, the final line assigns ``_pipe`` to the target
+        variable.
+        """
+        lines: list[str] = []
+        source = self._emit_expr(node.source)
+        lines.append(f"{self._indent()}_pipe = {source}")
+
+        for stage in node.stages:
+            lines.extend(self._emit_pipeline_stage(stage))
+
+        if target:
+            lines.append(f"{self._indent()}{target} = _pipe")
+        return lines
+
+    def _emit_pipeline_stage(self, stage) -> list[str]:
+        """Emit a single pipeline stage."""
+        if isinstance(stage, FilterStage):
+            cond = self._emit_filter_condition(stage.condition)
+            return [f"{self._indent()}_pipe = [_item for _item in _pipe if {cond}]"]
+
+        if isinstance(stage, SortStage):
+            if stage.direction == "descending":
+                return [f'{self._indent()}_pipe = sorted(_pipe, key=lambda _item: _item["{stage.field_name}"], reverse=True)']
+            return [f'{self._indent()}_pipe = sorted(_pipe, key=lambda _item: _item["{stage.field_name}"])']
+
+        if isinstance(stage, TakeStage):
+            count = self._emit_expr(stage.count)
+            return [f"{self._indent()}_pipe = _pipe[:{count}]"]
+
+        if isinstance(stage, SkipStage):
+            count = self._emit_expr(stage.count)
+            return [f"{self._indent()}_pipe = _pipe[{count}:]"]
+
+        if isinstance(stage, GroupStage):
+            ind = self._indent()
+            return [
+                f"{ind}_groups = {{}}",
+                f"{ind}for _item in _pipe:",
+                f"{ind}    _key = _item[\"{stage.field_name}\"]",
+                f"{ind}    _groups.setdefault(_key, []).append(_item)",
+                f'{ind}_pipe = [{{"key": k, "items": v}} for k, v in _groups.items()]',
+            ]
+
+        if isinstance(stage, DeduplicateStage):
+            return [f'{self._indent()}_pipe = list({{_item["{stage.field_name}"]: _item for _item in _pipe}}.values())']
+
+        if isinstance(stage, EachStage):
+            lines: list[str] = []
+            lines.append(f"{self._indent()}for {stage.variable} in _pipe:")
+            self.indent_level += 1
+            for stmt in stage.body:
+                lines.extend(self._emit_statement(stmt))
+            self.indent_level -= 1
+            return lines
+
+        if isinstance(stage, TransformStage):
+            # TransformStage body is a list of statements. For a map
+            # comprehension we need a single expression.  If the body is
+            # a single expression-statement (Assignment or bare expression)
+            # we can lift it; otherwise fall back to a for-loop.
+            if len(stage.body) == 1:
+                body_stmt = stage.body[0]
+                expr = self._emit_expr(body_stmt) if not isinstance(body_stmt, Assignment) else self._emit_expr(body_stmt.value)
+                return [f"{self._indent()}_pipe = [{expr} for {stage.variable} in _pipe]"]
+            # Multi-statement: use a helper list
+            lines = []
+            lines.append(f"{self._indent()}_result = []")
+            lines.append(f"{self._indent()}for {stage.variable} in _pipe:")
+            self.indent_level += 1
+            for stmt in stage.body:
+                lines.extend(self._emit_statement(stmt))
+            lines.append(f"{self._indent()}_result.append({stage.variable})")
+            self.indent_level -= 1
+            lines.append(f"{self._indent()}_pipe = _result")
+            return lines
+
+        if isinstance(stage, AIEnrich):
+            prompt = self._emit_expr(stage.prompt)
+            return [f"{self._indent()}_pipe = drift_runtime.ai.enrich(_pipe, {prompt})"]
+
+        if isinstance(stage, AIScore):
+            args = [self._emit_expr(stage.prompt)]
+            if stage.schema:
+                args.append(f'schema="{stage.schema}"')
+            return [f'{self._indent()}_pipe = drift_runtime.ai.score(_pipe, {", ".join(args)})']
+
+        if isinstance(stage, SaveStatement):
+            path = self._emit_expr(stage.path)
+            return [f"{self._indent()}drift_runtime.save(_pipe, {path})"]
+
+        raise TranspileError(
+            f"Unsupported pipeline stage type: {type(stage).__name__}",
+            getattr(stage, "line", 0),
+            getattr(stage, "col", 0),
+        )
+
+    def _emit_filter_condition(self, condition, item_var: str = "_item") -> str:
+        """Emit a filter condition, rewriting bare identifiers to item["field"]."""
+        if isinstance(condition, Identifier):
+            return f'{item_var}["{condition.name}"]'
+        if isinstance(condition, BinaryOp):
+            left = self._emit_filter_condition(condition.left, item_var)
+            right = self._emit_filter_condition(condition.right, item_var)
+            return f"({left} {condition.op} {right})"
+        # For literals and other expressions, use normal emission
+        return self._emit_expr(condition)
