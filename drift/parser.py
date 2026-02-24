@@ -30,6 +30,13 @@ from drift.ast_nodes import (
     MatchArm,
     FunctionDef,
     ReturnStatement,
+    AIAsk,
+    AIClassify,
+    AIEmbed,
+    AISee,
+    AIPredict,
+    AIEnrich,
+    AIScore,
 )
 
 
@@ -499,11 +506,18 @@ class Parser:
         return self.parse_postfix()
 
     def parse_postfix(self):
-        """Parse postfix operations: ``.field`` chains and ``(args)`` calls."""
+        """Parse postfix operations: ``.field`` chains, ``(args)`` calls, and AI primitives."""
         node = self.parse_primary()
 
         while True:
             if self.current().type == TokenType.DOT:
+                # Check for ai.method() dispatch
+                if isinstance(node, Identifier) and node.name == "ai":
+                    ai_node = self._try_parse_ai_primitive()
+                    if ai_node is not None:
+                        node = ai_node
+                        break  # AI primitives are terminal — no further postfix chaining
+
                 self.advance()  # consume '.'
                 field_tok = self.expect(TokenType.IDENTIFIER)
                 node = DotAccess(
@@ -518,6 +532,173 @@ class Parser:
                 break
 
         return node
+
+    # -- AI Primitive parsing -----------------------------------------------
+
+    _AI_DISPATCH = {
+        "ask": "_parse_ai_ask",
+        "classify": "_parse_ai_classify",
+        "embed": "_parse_ai_embed",
+        "see": "_parse_ai_see",
+        "predict": "_parse_ai_predict",
+        "enrich": "_parse_ai_enrich",
+        "score": "_parse_ai_score",
+    }
+
+    def _try_parse_ai_primitive(self):
+        """If the current position is DOT followed by a known AI method name, parse it.
+
+        Returns the AI AST node, or None if this is not an AI primitive
+        (allowing normal dot-access to proceed).
+        """
+        # We are at DOT and the primary was Identifier("ai")
+        # Peek at the identifier after DOT
+        if self.peek().type != TokenType.IDENTIFIER:
+            return None
+        method_name = self.peek().value
+        dispatch_method = self._AI_DISPATCH.get(method_name)
+        if dispatch_method is None:
+            return None
+
+        # Commit: consume DOT and method name
+        dot_tok = self.advance()  # consume DOT
+        self.advance()  # consume method name IDENTIFIER
+        return getattr(self, dispatch_method)(dot_tok)
+
+    def _parse_ai_ask(self, tok):
+        """Parse ``ai.ask(<prompt>) [-> <Schema>] [using { ... }]``."""
+        self.expect(TokenType.LPAREN)
+        prompt = self.parse_expression()
+        self.expect(TokenType.RPAREN)
+
+        # Optional schema: -> SchemaName
+        schema = None
+        if self.match(TokenType.ARROW):
+            schema_tok = self.expect(TokenType.IDENTIFIER)
+            schema = schema_tok.value
+
+        # Optional using block: using { key: value ... }
+        using = None
+        if self.current().type == TokenType.USING:
+            self.advance()  # consume USING
+            using = self._parse_using_map()
+
+        return AIAsk(prompt=prompt, schema=schema, using=using, line=tok.line, col=tok.column)
+
+    def _parse_ai_classify(self, tok):
+        """Parse ``ai.classify(<input>, into: [<categories>])``."""
+        self.expect(TokenType.LPAREN)
+        input_expr = self.parse_expression()
+        self.expect(TokenType.COMMA)
+
+        # Expect "into" identifier, COLON, then list literal
+        into_tok = self.current()
+        if into_tok.type != TokenType.IDENTIFIER or into_tok.value != "into":
+            raise ParseError(
+                f"Expected 'into' keyword but got {into_tok.type.name} ({into_tok.value!r})",
+                into_tok.line,
+                into_tok.column,
+            )
+        self.advance()  # consume "into"
+        self.expect(TokenType.COLON)
+        categories_node = self._parse_list_literal()
+        categories = categories_node.elements
+
+        self.expect(TokenType.RPAREN)
+        return AIClassify(input=input_expr, categories=categories, line=tok.line, col=tok.column)
+
+    def _parse_ai_embed(self, tok):
+        """Parse ``ai.embed(<input>)``."""
+        self.expect(TokenType.LPAREN)
+        input_expr = self.parse_expression()
+        self.expect(TokenType.RPAREN)
+        return AIEmbed(input=input_expr, line=tok.line, col=tok.column)
+
+    def _parse_ai_see(self, tok):
+        """Parse ``ai.see(<image>, <prompt>)``."""
+        self.expect(TokenType.LPAREN)
+        image = self.parse_expression()
+        self.expect(TokenType.COMMA)
+        prompt = self.parse_expression()
+        self.expect(TokenType.RPAREN)
+        return AISee(input=image, prompt=prompt, line=tok.line, col=tok.column)
+
+    def _parse_ai_predict(self, tok):
+        """Parse ``ai.predict(<prompt>) [-> [confident] <type>]``."""
+        self.expect(TokenType.LPAREN)
+        prompt = self.parse_expression()
+        self.expect(TokenType.RPAREN)
+
+        # Optional type/schema: -> [confident] type
+        schema = None
+        if self.match(TokenType.ARROW):
+            schema = self._parse_schema_type()
+
+        return AIPredict(prompt=prompt, schema=schema, line=tok.line, col=tok.column)
+
+    def _parse_ai_enrich(self, tok):
+        """Parse ``ai.enrich(<prompt>)``."""
+        self.expect(TokenType.LPAREN)
+        prompt = self.parse_expression()
+        self.expect(TokenType.RPAREN)
+        return AIEnrich(prompt=prompt, line=tok.line, col=tok.column)
+
+    def _parse_ai_score(self, tok):
+        """Parse ``ai.score(<prompt>) [-> <type>]``."""
+        self.expect(TokenType.LPAREN)
+        prompt = self.parse_expression()
+        self.expect(TokenType.RPAREN)
+
+        # Optional type/schema: -> type
+        schema = None
+        if self.match(TokenType.ARROW):
+            schema = self._parse_schema_type()
+
+        return AIScore(prompt=prompt, schema=schema, line=tok.line, col=tok.column)
+
+    def _parse_schema_type(self) -> str:
+        """Parse an optional schema type after ``->``.
+
+        Handles ``confident <type>`` (two tokens) or just ``<type>`` (one token).
+        """
+        if self.current().type == TokenType.CONFIDENT:
+            self.advance()  # consume "confident"
+            type_tok = self.expect(TokenType.IDENTIFIER)
+            return f"confident {type_tok.value}"
+        type_tok = self.expect(TokenType.IDENTIFIER)
+        return type_tok.value
+
+    def _skip_whitespace_tokens(self) -> None:
+        """Skip NEWLINE, INDENT, and DEDENT tokens (for brace-delimited blocks)."""
+        while self.current().type in (TokenType.NEWLINE, TokenType.INDENT, TokenType.DEDENT):
+            self.advance()
+
+    def _parse_using_map(self) -> dict:
+        """Parse a using block: ``{ key: value [\\n key: value ...] }``
+
+        Entries may be separated by commas or newlines.  Because the lexer
+        may insert INDENT/DEDENT tokens for the indented content inside
+        braces, we skip those structure tokens here.
+        """
+        self.expect(TokenType.LBRACE)
+        self._skip_whitespace_tokens()
+        pairs: dict = {}
+
+        while self.current().type != TokenType.RBRACE and not self.at_end():
+            self._skip_whitespace_tokens()
+            if self.current().type == TokenType.RBRACE:
+                break
+            key_tok = self.expect(TokenType.IDENTIFIER)
+            self.expect(TokenType.COLON)
+            value = self.parse_expression()
+            pairs[key_tok.value] = value
+
+            # Skip optional comma and/or whitespace tokens between entries
+            self.match(TokenType.COMMA)
+            self._skip_whitespace_tokens()
+
+        self.expect(TokenType.RBRACE)
+        return pairs
 
     def _parse_call(self, callee):
         """Parse a function call ``(arg1, arg2, ...)``."""

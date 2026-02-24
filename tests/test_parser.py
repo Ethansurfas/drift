@@ -28,6 +28,13 @@ from drift.ast_nodes import (
     MatchArm,
     FunctionDef,
     ReturnStatement,
+    AIAsk,
+    AIClassify,
+    AIEmbed,
+    AISee,
+    AIPredict,
+    AIEnrich,
+    AIScore,
 )
 from drift.errors import ParseError
 
@@ -660,3 +667,63 @@ class TestFunctionDef:
         assert len(prog.body) == 2
         assert isinstance(prog.body[0], FunctionDef)
         assert isinstance(prog.body[1], PrintStatement)
+
+
+# ---------------------------------------------------------------------------
+# AI Primitives
+# ---------------------------------------------------------------------------
+
+class TestAIPrimitives:
+    def test_ai_ask_simple(self):
+        src = 'x = ai.ask("What is 2+2?")'
+        prog = parse(src)
+        assert isinstance(prog.body[0].value, AIAsk)
+        assert isinstance(prog.body[0].value.prompt, StringLiteral)
+
+    def test_ai_ask_with_schema(self):
+        src = 'x = ai.ask("Analyze this") -> DealScore'
+        prog = parse(src)
+        ask = prog.body[0].value
+        assert isinstance(ask, AIAsk)
+        assert ask.schema == "DealScore"
+
+    def test_ai_ask_with_using(self):
+        src = 'x = ai.ask("Analyze") -> Deal using {\n  address: addr\n  price: 100\n}'
+        prog = parse(src)
+        ask = prog.body[0].value
+        assert isinstance(ask, AIAsk)
+        assert ask.schema == "Deal"
+        assert ask.using is not None
+
+    def test_ai_classify(self):
+        src = 'x = ai.classify(text, into: ["a", "b", "c"])'
+        prog = parse(src)
+        assert isinstance(prog.body[0].value, AIClassify)
+        assert len(prog.body[0].value.categories) == 3
+
+    def test_ai_embed(self):
+        src = "x = ai.embed(doc.text)"
+        prog = parse(src)
+        assert isinstance(prog.body[0].value, AIEmbed)
+
+    def test_ai_see(self):
+        src = 'x = ai.see(photo, "Describe this")'
+        prog = parse(src)
+        node = prog.body[0].value
+        assert isinstance(node, AISee)
+
+    def test_ai_predict(self):
+        src = 'x = ai.predict("Estimate value") -> confident number'
+        prog = parse(src)
+        node = prog.body[0].value
+        assert isinstance(node, AIPredict)
+
+    def test_ai_enrich(self):
+        src = 'x = ai.enrich("Add summary")'
+        prog = parse(src)
+        assert isinstance(prog.body[0].value, AIEnrich)
+
+    def test_ai_score(self):
+        src = 'x = ai.score("Rate 1-100") -> number'
+        prog = parse(src)
+        assert isinstance(prog.body[0].value, AIScore)
