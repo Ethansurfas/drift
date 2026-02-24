@@ -2,7 +2,7 @@
 
 ## What is Drift?
 
-An AI-native programming language that transpiles to Python. See `DRIFT_LANGUAGE_SPEC.md` for the full language spec.
+An AI-native programming language that transpiles to Python. See `docs/DRIFT_LANGUAGE_SPEC.md` for the full language spec.
 
 ## Quick Reference: Writing Drift
 
@@ -181,9 +181,7 @@ drift/
 │   └── exceptions.py   # DriftRuntimeError, DriftAIError, DriftNetworkError, DriftFileError, DriftConfigError
 ├── tests/              # 447+ tests
 ├── examples/           # hello.drift, pipeline.drift, deal_analyzer.drift
-├── docs/plans/         # Design docs
-├── DRIFT_LANGUAGE_SPEC.md
-└── DRIFT_PHASE2_RUNTIME_SPEC.md
+└── docs/               # Specs and design docs
 ```
 
 ## Current Status
