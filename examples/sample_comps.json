@@ -1,0 +1,47 @@
+[
+  {
+    "address": "738 Evergreen Terrace",
+    "price": 285000,
+    "sqft": 1450,
+    "beds": 3,
+    "baths": 2,
+    "year_built": 1998,
+    "days_on_market": 12
+  },
+  {
+    "address": "751 Maple Drive",
+    "price": 312000,
+    "sqft": 1620,
+    "beds": 3,
+    "baths": 2.5,
+    "year_built": 2004,
+    "days_on_market": 28
+  },
+  {
+    "address": "804 Oak Avenue",
+    "price": 265000,
+    "sqft": 1380,
+    "beds": 3,
+    "baths": 1.5,
+    "year_built": 1992,
+    "days_on_market": 45
+  },
+  {
+    "address": "689 Pine Street",
+    "price": 299000,
+    "sqft": 1510,
+    "beds": 4,
+    "baths": 2,
+    "year_built": 2001,
+    "days_on_market": 8
+  },
+  {
+    "address": "720 Birch Lane",
+    "price": 275000,
+    "sqft": 1400,
+    "beds": 3,
+    "baths": 2,
+    "year_built": 1996,
+    "days_on_market": 33
+  }
+]
