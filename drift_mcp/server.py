@@ -144,5 +144,133 @@ def run_drift_file(filepath: str) -> str:
     return output if output else "(program produced no output)"
 
 
+DRIFT_LANGUAGE_GUIDE = """\
+# Writing Drift Programs
+
+Drift is an AI-native programming language that transpiles to Python. It reads like English.
+Use the drift_write tool to create .drift files, then drift_run to execute them.
+
+## Syntax Reference
+
+### Variables (no let/var/const needed)
+```
+city = "Austin"
+price = 450000
+active = true
+tags = ["one", "two"]
+```
+
+### Print (no parentheses needed)
+```
+print "Hello {name}!"
+print "Price: ${amount}"
+```
+
+### Comments
+```
+-- This is a comment
+```
+
+### Schemas (structured data types)
+```
+schema DealScore:
+  address: string
+  arv: number
+  verdict: string
+  tags: list of string
+```
+
+### AI Primitives (built-in, no imports)
+```
+-- Simple question
+answer = ai.ask("Summarize this text: {content}")
+
+-- Structured output with schema
+analysis = ai.ask("Analyze this data") -> MySchema using {
+  context_key: context_value
+}
+
+-- Classify
+category = ai.classify(text, into: ["urgent", "routine", "spam"])
+
+-- Enrich a list (add AI-generated fields to each item)
+enriched = items |> ai.enrich("Add a category field to each item")
+```
+
+### Data Operations
+```
+data = read "file.csv"
+data = read "file.json"
+content = fetch "https://example.com"
+data = fetch "https://api.example.com" with {
+  headers: { "X-Key": env.API_KEY }
+  params: { limit: 50 }
+}
+save results to "output.json"
+```
+
+### Pipelines
+```
+results = data
+  |> filter where price < 500000
+  |> sort by price ascending
+  |> take 10
+  |> ai.enrich("Add analysis")
+  |> save to "output.json"
+```
+
+### Control Flow
+```
+if score > 90:
+  print "excellent"
+else if score > 70:
+  print "good"
+else:
+  print "needs work"
+
+for each item in items:
+  print "{item.name}: {item.value}"
+```
+
+### Functions
+```
+define greet(name: string) -> string:
+  return "Hello {name}"
+```
+
+### Environment Variables
+```
+api_key = env.MY_API_KEY
+```
+
+### Error Handling
+```
+try:
+  data = fetch url
+catch network_error:
+  log "API unreachable"
+catch ai_error:
+  log "AI call failed"
+```
+
+## Important Rules
+1. Strings use double quotes only: "hello" (not 'hello')
+2. String interpolation uses {}: "Hello {name}" (not f-strings)
+3. Booleans are lowercase: true, false (not True, False)
+4. No parentheses on print: print "hello" (not print("hello"))
+5. Comments use --: -- comment (not # or //)
+6. Loops use "for each": for each item in list: (not "for item in list:")
+7. No imports needed -- ai, fetch, read, save, print are all built-in
+8. Indentation is 2 spaces
+9. Files must end with .drift extension
+"""
+
+
+@mcp.prompt()
+def drift_guide() -> str:
+    """Complete guide to writing Drift programs. Use this when writing .drift files."""
+    return DRIFT_LANGUAGE_GUIDE
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
