@@ -38,5 +38,33 @@ def write_drift_file(filepath: str, source: str) -> str:
         return f"Error writing file: {e}"
 
 
+@mcp.tool()
+def drift_check(filepath: str) -> str:
+    """Check Drift syntax without running. Validates that the file is valid Drift code.
+
+    Args:
+        filepath: Path to the .drift file to check
+    """
+    return check_drift_file(filepath)
+
+
+def check_drift_file(filepath: str) -> str:
+    """Core logic for checking a drift file — testable without MCP."""
+    try:
+        with open(filepath) as f:
+            source = f.read()
+    except FileNotFoundError:
+        return f"Error: file not found: {filepath}"
+    except OSError as e:
+        return f"Error reading file: {e}"
+
+    try:
+        tokens = Lexer(source).tokenize()
+        Parser(tokens).parse()
+        return f"OK: {filepath}"
+    except DriftError as e:
+        return f"Error: {e}"
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

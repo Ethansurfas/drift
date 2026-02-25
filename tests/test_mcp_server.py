@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from drift_mcp.server import write_drift_file
+from drift_mcp.server import write_drift_file, check_drift_file
 
 
 def test_write_drift_file_creates_file():
@@ -25,4 +25,27 @@ def test_write_drift_file_creates_directories():
 
 def test_write_drift_file_rejects_non_drift():
     result = write_drift_file("/tmp/test.py", 'print("hello")')
+    assert "Error" in result
+
+
+def test_check_valid_drift():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = os.path.join(tmpdir, "test.drift")
+        with open(filepath, "w") as f:
+            f.write('name = "World"\nprint "Hello {name}!"')
+        result = check_drift_file(filepath)
+        assert "OK" in result
+
+
+def test_check_invalid_drift():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = os.path.join(tmpdir, "test.drift")
+        with open(filepath, "w") as f:
+            f.write('if if if')
+        result = check_drift_file(filepath)
+        assert "Error" in result
+
+
+def test_check_missing_file():
+    result = check_drift_file("/nonexistent/file.drift")
     assert "Error" in result
