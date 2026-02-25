@@ -4,7 +4,7 @@
 
 A programming language anyone can understand.
 
-An AI-native programming language that transpiles to Python. Drift treats AI as a first-class primitive — no imports, no SDKs, no boilerplate. Just write `ai.ask(...)` and it works.
+AI needs to code in a language that gives it freedom, not constraint. Drift is that language — AI-native, transpiles to Python, treats AI as a first-class primitive. No imports, no SDKs, no boilerplate. Just write `ai.ask(...)` and it works.
 
 ```drift
 -- Analyze a property deal in 5 lines
