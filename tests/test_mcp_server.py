@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from drift_mcp.server import write_drift_file, check_drift_file, build_drift_file
+from drift_mcp.server import write_drift_file, check_drift_file, build_drift_file, run_drift_file
 
 
 def test_write_drift_file_creates_file():
@@ -73,3 +73,44 @@ def test_build_invalid_drift():
 def test_build_missing_file():
     result = build_drift_file("/nonexistent/file.drift")
     assert "Error" in result
+
+
+def test_run_hello_world():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = os.path.join(tmpdir, "test.drift")
+        with open(filepath, "w") as f:
+            f.write('print "Hello from Drift!"')
+        result = run_drift_file(filepath)
+        assert "Hello from Drift!" in result
+
+
+def test_run_with_variables():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = os.path.join(tmpdir, "test.drift")
+        with open(filepath, "w") as f:
+            f.write('name = "World"\nprint "Hello {name}!"')
+        result = run_drift_file(filepath)
+        assert "Hello World!" in result
+
+
+def test_run_invalid_drift():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = os.path.join(tmpdir, "test.drift")
+        with open(filepath, "w") as f:
+            f.write('if if if')
+        result = run_drift_file(filepath)
+        assert "Error" in result
+
+
+def test_run_missing_file():
+    result = run_drift_file("/nonexistent/file.drift")
+    assert "Error" in result
+
+
+def test_run_runtime_error():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        filepath = os.path.join(tmpdir, "test.drift")
+        with open(filepath, "w") as f:
+            f.write('x = 1 / 0')
+        result = run_drift_file(filepath)
+        assert "Error" in result or "ZeroDivision" in result

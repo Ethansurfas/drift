@@ -95,5 +95,54 @@ def build_drift_file(filepath: str) -> str:
         return f"Error: {e}"
 
 
+@mcp.tool()
+def drift_run(filepath: str) -> str:
+    """Run a Drift program. Transpiles to Python and executes it, returning the output.
+
+    Args:
+        filepath: Path to the .drift file to run
+    """
+    return run_drift_file(filepath)
+
+
+def run_drift_file(filepath: str) -> str:
+    """Core logic for running a drift file — testable without MCP."""
+    try:
+        with open(filepath) as f:
+            source = f.read()
+    except FileNotFoundError:
+        return f"Error: file not found: {filepath}"
+    except OSError as e:
+        return f"Error reading file: {e}"
+
+    try:
+        tokens = Lexer(source).tokenize()
+        tree = Parser(tokens).parse()
+        python_code = Transpiler(tree).transpile()
+    except DriftError as e:
+        return f"Error: {e}"
+
+    # Capture stdout during execution
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    captured_out = io.StringIO()
+    captured_err = io.StringIO()
+    try:
+        sys.stdout = captured_out
+        sys.stderr = captured_err
+        exec(python_code, {"__name__": "__main__"})
+    except Exception as e:
+        return f"{captured_out.getvalue()}Error during execution: {type(e).__name__}: {e}"
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+
+    output = captured_out.getvalue()
+    err_output = captured_err.getvalue()
+    if err_output:
+        output += f"\n[stderr]: {err_output}"
+    return output if output else "(program produced no output)"
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
