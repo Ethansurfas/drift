@@ -66,5 +66,34 @@ def check_drift_file(filepath: str) -> str:
         return f"Error: {e}"
 
 
+@mcp.tool()
+def drift_build(filepath: str) -> str:
+    """Transpile a Drift file to Python. Returns the generated Python code.
+
+    Args:
+        filepath: Path to the .drift file to transpile
+    """
+    return build_drift_file(filepath)
+
+
+def build_drift_file(filepath: str) -> str:
+    """Core logic for building a drift file — testable without MCP."""
+    try:
+        with open(filepath) as f:
+            source = f.read()
+    except FileNotFoundError:
+        return f"Error: file not found: {filepath}"
+    except OSError as e:
+        return f"Error reading file: {e}"
+
+    try:
+        tokens = Lexer(source).tokenize()
+        tree = Parser(tokens).parse()
+        python_code = Transpiler(tree).transpile()
+        return python_code
+    except DriftError as e:
+        return f"Error: {e}"
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
