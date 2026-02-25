@@ -201,6 +201,38 @@ ai:
 
 If no config file exists, Drift uses sensible defaults (Anthropic, Claude Sonnet, 2 retries, 30s timeout).
 
+## Claude Integration (MCP Server)
+
+Use Drift directly from Claude Desktop or Claude Code. Claude can write, check, and run Drift programs.
+
+### Setup
+
+1. Install with MCP support:
+
+```bash
+git clone https://github.com/ethansurfas/drift.git
+cd drift
+pip install -e ".[mcp]"
+```
+
+2. Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "drift": {
+      "command": "python3",
+      "args": ["-m", "drift_mcp"],
+      "env": {
+        "ANTHROPIC_API_KEY": "your-key-here"
+      }
+    }
+  }
+}
+```
+
+3. Restart Claude Desktop. Now just ask Claude to write and run Drift programs.
+
 ## How It Works
 
 Drift programs transpile to Python:
@@ -278,9 +310,10 @@ drift run examples/news_analyzer.drift
 drift/
 ├── drift/              # Compiler (lexer, parser, transpiler, CLI)
 ├── drift_runtime/      # Runtime (AI, data I/O, config, pipeline helpers)
-├── tests/              # 447+ tests
+├── drift_mcp/          # MCP server (Claude Desktop / Claude Code integration)
+├── tests/              # 470+ tests
 ├── examples/           # deal_analyzer, budget, summarizer, news_analyzer
-└── docs/plans/         # Design documents
+└── docs/               # Design documents
 ```
 
 ## Running Tests
