@@ -19,12 +19,13 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+mcp = ["mcp>=1.0.0"]
 
 [project.scripts]
 drift = "drift.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["drift*", "drift_runtime*"]
+include = ["drift*", "drift_runtime*", "drift_mcp*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
